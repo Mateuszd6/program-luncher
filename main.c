@@ -14,11 +14,63 @@
 
 int nanosleep(const struct timespec *req, struct timespec *rem);
 
+
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
+
+#define TTF_BUFFER_SIZE (1 << 25)
+char unsigned ttf_buffer[TTF_BUFFER_SIZE];
+
+typedef struct
+{
+    unsigned char *pixels;
+    int w, h;
+} BitmapInfo;
+BitmapInfo characters['z' - 'a' + 1][2];
+
+static void
+stb_test()
+{
+    stbtt_fontinfo font;
+    int w, h, i, j, fsize = 20;
+
+    fread(ttf_buffer, 1, TTF_BUFFER_SIZE,
+          fopen("/usr/share/fonts/TTF/DejaVuSans.ttf", "rb"));
+
+    stbtt_InitFont(&font, ttf_buffer,
+                   stbtt_GetFontOffsetForIndex(ttf_buffer, 0));
+
+    for (int caps = 0; caps < 2; ++caps)
+        for (int letter = 'a'; letter <= 'z'; ++letter)
+        {
+            unsigned char *bitmap = stbtt_GetCodepointBitmap(
+                &font, 0, stbtt_ScaleForPixelHeight(&font, fsize),
+                (caps ? letter + 'A' - 'a' : letter), &w, &h, 0,0);
+
+            characters[letter - 'a'][caps] = (BitmapInfo){ bitmap, w, h };
+        }
+
+    for (int caps = 0; caps < 2; ++caps)
+        for (int letter = 0; letter < 'z' - 'a' + 1; ++letter)
+        {
+            putchar('\n');
+            putchar('\n');
+            BitmapInfo bi = characters[letter][caps];
+            for (j = 0; j < bi.h; ++j)
+            {
+                for (i =0 ; i < bi.w; ++i)
+                    putchar(" .:ioVM@"[bi.pixels[j* bi.w +i]>>5]);
+                putchar('\n');
+            }
+        }
+}
+
 Display *dpy;
 XFontStruct *font;
 GC gc;
 
-static void set_up_font ()
+static void
+set_up_font ()
 {
     const char * fontname = "-*-helvetica-*-r-*-*-18-*-*-*-*-*-*-*";
     font = XLoadQueryFont (dpy, fontname);
@@ -44,7 +96,8 @@ const char *entries[NUMBER_OF_ENTRIES] =
     "Test"
 };
 
-int prefixMatch(const char *text, const char *pattern)
+static int
+prefixMatch(const char *text, const char *pattern)
 {
     for (int i = 0;; ++i)
     {
@@ -57,15 +110,20 @@ int prefixMatch(const char *text, const char *pattern)
 }
 
 // [text] must be \0 terminated.
-int getLettersCount(const char *text)
+int
+getLettersCount(const char *text)
 {
     for (int i = 0;; ++i)
         if (text[i] == '\0')
             return i;
 }
 
-int main()
+int
+main()
 {
+    stb_test();
+    return 0;
+
     inserted_text[0] = '\0';
 
     dpy = XOpenDisplay(NULL);
