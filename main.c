@@ -2,10 +2,10 @@
 // redrawing it manually makes it weird and sometimes ignores what we just
 // copied into GC.
 
-#include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
+#include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <X11/Xlib.h> // Every Xlib program must include this
 #include <X11/Xutil.h>
@@ -14,7 +14,7 @@
 #include <unistd.h>
 
 #define WINDOW_W (640)
-#define WINDOW_H (125)
+#define WINDOW_H (256)
 
 int nanosleep(const struct timespec *req, struct timespec *rem);
 
@@ -28,28 +28,38 @@ Pixmap pixmap;
 Colormap color_map;
 XColor bg_color[2];
 
-const int bg_red = 0x1e, bg_green = 0x1f, bg_blue = 0x1c;
-
-static void
-set_up_font ()
+typedef struct
 {
-    const char * fontname = "-*-fixed-*-*-*-*-20-*-*-*-*-*-*-*"; // "-*-helvetica-*-r-*-*-18-*-*-*-*-*-*-*";
-    font = XLoadQueryFont (dpy, fontname);
+    int red;
+    int green;
+    int blue;
+} ColorData;
+
+const ColorData bg_color_data = {0x1e, 0x1f, 0x1c};
+const ColorData lines_color_data = {0xFF, 0xFF, 0xFF};
+
+static int draw_lines = 0;
+
+static void set_up_font()
+{
+    const char *fontname =
+        "-*-fixed-*-*-*-*-20-*-*-*-*-*-*-*"; // "-*-helvetica-*-r-*-*-18-*-*-*-*-*-*-*";
+    font = XLoadQueryFont(dpy, fontname);
 
     /* If the font could not be loaded, revert to the "fixed" font. */
-    if (! font) {
-        fprintf (stderr, "unable to load font %s: using fixed\n", fontname);
-        font = XLoadQueryFont (dpy, "fixed");
+    if (!font)
+    {
+        fprintf(stderr, "unable to load font %s: using fixed\n", fontname);
+        font = XLoadQueryFont(dpy, "fixed");
     }
-    XSetFont (dpy, gc, font->fid);
+    XSetFont(dpy, gc, font->fid);
 }
 
 char inserted_text[256];
 int inserted_text_idx = 0;
 
 #define NUMBER_OF_ENTRIES (25)
-const char *entries[NUMBER_OF_ENTRIES] =
-{
+const char *entries[NUMBER_OF_ENTRIES] = {
     "Foo",
     "Bar",
     "FooBar",
@@ -78,11 +88,9 @@ const char *entries[NUMBER_OF_ENTRIES] =
     "Bar again",
     "FooBar again",
     "Scoo again",
-    "Test again"
-};
+    "Test again"};
 
-static int
-prefixMatch(const char *text, const char *pattern)
+static int prefixMatch(const char *text, const char *pattern)
 {
     for (int i = 0;; ++i)
     {
@@ -95,27 +103,18 @@ prefixMatch(const char *text, const char *pattern)
 }
 
 // [text] must be \0 terminated.
-static int
-getLettersCount(const char *text)
+static int getLettersCount(const char *text)
 {
     for (int i = 0;; ++i)
         if (text[i] == '\0')
             return i;
 }
 
-static void
-redrawWindow()
+static void redrawWindow()
 {
     // Draw the background.
     XSetForeground(dpy, gc, bg_color[0].pixel);
     XFillRectangle(dpy, w, gc, 0, 0, WINDOW_W, WINDOW_H);
-
-    // Draw the margins:
-    XSetForeground(dpy, gc, whiteColor);
-    XFillRectangle(dpy, w, gc, 0, 0, WINDOW_W, 1);
-    XFillRectangle(dpy, w, gc, 0, 0, 1, WINDOW_H);
-    XFillRectangle(dpy, w, gc, WINDOW_W-1, 0, WINDOW_W, WINDOW_H);
-    XFillRectangle(dpy, w, gc, 0, WINDOW_H-1, WINDOW_W, WINDOW_H);
 
     int x = 0;
     int y = 0;
@@ -124,27 +123,56 @@ redrawWindow()
     int descent = 0;
     XCharStruct overall;
 
-    XTextExtents (font, "Hello World!", getLettersCount("Hello World!"),
-                  &direction, &ascent, &descent, &overall);
+    XSetForeground(dpy, gc, whiteColor);
+    XTextExtents(font, "Hello World!", getLettersCount("Hello World!"),
+                 &direction, &ascent, &descent, &overall);
 
-    x = 5; // (WINDOW_W - overall.width) / 2;
-    y = 50; // WINDOW_H / 2 + (ascent - descent) / 2;
+    x = 5;  // (WINDOW_W - overall.width) / 2;
+    y = 20; // WINDOW_H / 2 + (ascent - descent) / 2;
 
-    int displayed_entries = 0;
+    XDrawString(dpy, w, gc, x, y, inserted_text, inserted_text_idx);
+    if (draw_lines)
+        // TODO: Change the color to line color!
+        XFillRectangle(dpy, w, gc, 0, y + 5, WINDOW_W, 1);
 
-    /* XClearWindow (dpy, w); */
 
-    XDrawString (dpy, w, gc, x, 20, inserted_text, inserted_text_idx);
+    for (int i = 0; i < 100; ++i)
+    {
+        XSetForeground(dpy, gc, (i & 1 ? bg_color[0].pixel : bg_color[1].pixel));
+        XFillRectangle(dpy, w, gc, 0, y + i * (ascent - descent + 10) + 5,
+                       WINDOW_W, ascent - descent + 10);
+    }
+
+    int displayed_entries = 1;
     for (int i = 0; i < NUMBER_OF_ENTRIES; ++i)
     {
         if (inserted_text[0] == '\0' || prefixMatch(entries[i], inserted_text))
         {
-            XDrawString (dpy, w, gc, x, y + displayed_entries * (ascent - descent + 10),
-                         entries[i], getLettersCount(entries[i]));
+            XSetForeground(dpy, gc, whiteColor);
+            XDrawString(dpy, w, gc, x,
+                        y + displayed_entries * (ascent - descent + 10),
+                        entries[i], getLettersCount(entries[i]));
 
             displayed_entries++;
         }
     }
+
+    // Draw the margins:
+    if (draw_lines)
+    {
+        // TODO: Change the color to line color!
+        XSetForeground(dpy, gc, whiteColor);
+        XFillRectangle(dpy, w, gc, 0, 0, WINDOW_W, 1);
+        XFillRectangle(dpy, w, gc, 0, 0, 1, WINDOW_H);
+        XFillRectangle(dpy, w, gc, WINDOW_W - 1, 0, WINDOW_W, WINDOW_H);
+        XFillRectangle(dpy, w, gc, 0, WINDOW_H - 1, WINDOW_W, WINDOW_H);
+
+        for (int i = 0; i < 100; ++i)
+            XFillRectangle(dpy, w, gc, 0, y + i * (ascent - descent + 10) + 5,
+                           WINDOW_W, 1);
+
+    }
+
     XFlush(dpy);
 
 #if 0
@@ -153,8 +181,7 @@ redrawWindow()
 #endif
 }
 
-int
-main()
+int main()
 {
     inserted_text[0] = '\0';
 
@@ -166,9 +193,18 @@ main()
     blackColor = BlackPixel(dpy, DefaultScreen(dpy));
     whiteColor = WhitePixel(dpy, DefaultScreen(dpy));
 
-    bg_color[0].red = bg_red * 256; bg_color[0].green = bg_green * 256; bg_color[0].blue = bg_blue * 256;
+    bg_color[0].red = bg_color_data.red * 256;
+    bg_color[0].green = bg_color_data.green * 256;
+    bg_color[0].blue = bg_color_data.blue * 256;
     bg_color[0].flags = DoRed | DoGreen | DoBlue;
     XAllocColor(dpy, color_map, bg_color);
+
+    bg_color[1].red = (bg_color_data.red - 0x08) * 256;
+    bg_color[1].green = (bg_color_data.green - 0x08) * 256;
+    bg_color[1].blue = (bg_color_data.blue - 0x08) * 256;
+    bg_color[1].flags = DoRed | DoGreen | DoBlue;
+    XAllocColor(dpy, color_map, bg_color+1);
+
 
     // MY:
     XSetWindowAttributes wa;
@@ -180,13 +216,11 @@ main()
     int scr = DefaultScreen(dpy);
     s = ScreenOfDisplay(dpy, scr);
 
-    w = XCreateWindow(dpy, DefaultRootWindow(dpy),
-                      (WidthOfScreen(s) - WINDOW_W) / 2,
-                      (HeightOfScreen(s) - WINDOW_H) / 2,
-                      WINDOW_W, WINDOW_H, 0, DefaultDepth(dpy, scr),
-                      InputOutput, DefaultVisual(dpy, scr),
-                      CWOverrideRedirect | CWBackPixmap | CWEventMask,
-                      &wa);
+    w = XCreateWindow(
+        dpy, DefaultRootWindow(dpy), (WidthOfScreen(s) - WINDOW_W) / 2,
+        (HeightOfScreen(s) - WINDOW_H) / 2, WINDOW_W, WINDOW_H, 0,
+        DefaultDepth(dpy, scr), InputOutput, DefaultVisual(dpy, scr),
+        CWOverrideRedirect | CWBackPixmap | CWEventMask, &wa);
     XClearWindow(dpy, w);
 
     // TODO: Copied from dmenu.
@@ -197,8 +231,8 @@ main()
     int grab_succeded = 0;
     for (int i = 0; i < 1000; ++i)
     {
-        if (!XGrabKeyboard(dpy, DefaultRootWindow(dpy), True,
-                           GrabModeAsync, GrabModeAsync, CurrentTime))
+        if (!XGrabKeyboard(dpy, DefaultRootWindow(dpy), True, GrabModeAsync,
+                           GrabModeAsync, CurrentTime))
         {
             grab_succeded = 1;
             break;
@@ -214,8 +248,7 @@ main()
         exit(3);
     }
 
-
-    // For testing stuff that does not work with keyboard nor needs it.
+        // For testing stuff that does not work with keyboard nor needs it.
 #if 0
     XUngrabKeyboard(dpy, CurrentTime);
 #endif
@@ -247,7 +280,7 @@ main()
 #endif
     XFillRectangle(dpy, w, gc, 0, 0, WINDOW_W, WINDOW_H);
 
-    set_up_font ();
+    set_up_font();
 
     XFlush(dpy);
 
@@ -256,7 +289,8 @@ main()
 
     // TODO: PRobobly not the best way, but who cares?
     // int depth = DefaultDepth(dpy, DefaultScreen(dpy));
-    /* pixmap = XCreatePixmapFromBitmapData(dpy, w, (char *)a.pixels, a.w, a.h, */
+    /* pixmap = XCreatePixmapFromBitmapData(dpy, w, (char *)a.pixels, a.w, a.h,
+     */
     /* whiteColor, blackColor, depth); */
 
     // XFlush(dpy);
@@ -270,7 +304,7 @@ main()
     redrawWindow();
 
     // Wait for the MapNotify event
-    while(1)
+    while (1)
     {
         int key_press = 0;
 
@@ -278,7 +312,7 @@ main()
         XNextEvent(dpy, &e);
         // if (e.type == MapNotify)
         //    break;
-        //else
+        // else
         if (e.type == KeyPress)
         {
             key_press++;
@@ -293,7 +327,8 @@ main()
                 case XK_Escape:
                 {
                     exit(12);
-                } break;
+                }
+                break;
 
                 case XK_BackSpace:
                 {
@@ -303,14 +338,16 @@ main()
                         inserted_text[inserted_text_idx] = '\0';
                         redraw = 1;
                     }
-                } break;
+                }
+                break;
 
                 case XK_Return:
                 {
                     printf(inserted_text);
                     XUngrabKeyboard(dpy, CurrentTime);
                     exit(0);
-                } break;
+                }
+                break;
 
                 default:
                     break;
@@ -330,8 +367,6 @@ main()
             {
                 redrawWindow();
             }
-
-
         }
 
         else if (e.type == ButtonPress)
