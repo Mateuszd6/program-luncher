@@ -31,6 +31,8 @@ XColor bg_color[2];
 XColor font_color;
 XColor lines_color;
 
+static int current_select = 0;
+
 typedef struct
 {
     int red;
@@ -114,6 +116,17 @@ static int getLettersCount(const char *text)
             return i;
 }
 
+// This sets up [curret_select] to the first match.
+static void updateMenu()
+{
+    for (int i = 0; i < NUMBER_OF_ENTRIES; ++i)
+        if (prefixMatch(entries[i], inserted_text))
+        {
+            current_select = i;
+            return;
+        }
+}
+
 static void redrawWindow()
 {
     // Draw the background.
@@ -179,6 +192,12 @@ static void redrawWindow()
                            WINDOW_W, 1);
 
     }
+
+    // TODO: Or <=?
+    assert(current_select < NUMBER_OF_ENTRIES);
+    printf("CURRENT SELECTED OPTION TO COMPLETE: %s\n",
+        entries[current_select]);
+
 
     XFlush(dpy);
 
@@ -362,6 +381,7 @@ int main()
                 case XK_Return:
                 {
                     printf(inserted_text);
+                    putchar('\n');
                     XUngrabKeyboard(dpy, CurrentTime);
                     exit(0);
                 }
@@ -383,6 +403,9 @@ int main()
 
             if (redraw)
             {
+                // TODO: Update menu might have different conditions that
+                // redraw!
+                updateMenu();
                 redrawWindow();
             }
         }
