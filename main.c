@@ -30,6 +30,8 @@ Colormap color_map;
 XColor bg_color[2];
 XColor font_color;
 XColor lines_color;
+XColor selected_field_color;
+XColor selected_font_color;
 
 typedef struct
 {
@@ -40,7 +42,9 @@ typedef struct
 
 const ColorData bg_color_data = {0x1e, 0x1f, 0x1c};
 const ColorData lines_color_data = {0x02, 0x02, 0x02};
-const ColorData font_color_data = {0xFF, 0xFF, 0xFF};
+const ColorData font_color_data = {0xCF, 0xCF, 0xCF};
+const ColorData selected_field_color_data = {0xFF, 0x00, 0x00};
+const ColorData selected_font_color_data = {0x00, 0xFF, 0xFF};
 
 static int draw_lines = 1;
 
@@ -137,12 +141,6 @@ static void redrawWindow()
     XSetForeground(dpy, gc, font_color.pixel);
     XDrawString(dpy, w, gc, x, y, inserted_text, inserted_text_idx);
 
-#if 0
-    if (draw_lines)
-        // TODO: Change the color to line color!
-        XFillRectangle(dpy, w, gc, 0, y + 5, WINDOW_W, 1);
-#endif
-
     for (int i = 0; i < 100; ++i)
     {
         XSetForeground(dpy, gc, (i & 1 ? bg_color[0].pixel : bg_color[1].pixel));
@@ -156,6 +154,9 @@ static void redrawWindow()
         if (inserted_text[0] == '\0' || prefixMatch(entries[i], inserted_text))
         {
             XSetForeground(dpy, gc, font_color.pixel);
+            if (displayed_entries == 1)
+                XSetForeground(dpy, gc, selected_font_color.pixel);
+
             XDrawString(dpy, w, gc, x,
                         y + displayed_entries * (ascent - descent + 10),
                         entries[i], getLettersCount(entries[i]));
@@ -177,7 +178,6 @@ static void redrawWindow()
         for (int i = 0; i < 100; ++i)
             XFillRectangle(dpy, w, gc, 0, y + i * (ascent - descent + 10) + 5,
                            WINDOW_W, 1);
-
     }
 
     XFlush(dpy);
@@ -186,6 +186,15 @@ static void redrawWindow()
     printf(inserted_text);
     printf("\n");
 #endif
+}
+
+void allocateXColorFromColorData(XColor *xcolor, const ColorData data)
+{
+    xcolor->red = data.red * 256;
+    xcolor->green = data.green * 256;
+    xcolor->blue = data.blue * 256;
+    xcolor->flags = DoRed | DoGreen | DoBlue;
+    XAllocColor(dpy, color_map, xcolor);
 }
 
 int main()
@@ -200,29 +209,18 @@ int main()
     blackColor = BlackPixel(dpy, DefaultScreen(dpy));
     whiteColor = WhitePixel(dpy, DefaultScreen(dpy));
 
-    bg_color[0].red = bg_color_data.red * 256;
-    bg_color[0].green = bg_color_data.green * 256;
-    bg_color[0].blue = bg_color_data.blue * 256;
-    bg_color[0].flags = DoRed | DoGreen | DoBlue;
-    XAllocColor(dpy, color_map, bg_color);
+    ColorData second_bg_color_data = {
+        bg_color_data.red-0x08,
+        bg_color_data.green-0x08,
+        bg_color_data.blue-0x08
+    };
 
-    bg_color[1].red = (bg_color_data.red - 0x08) * 256;
-    bg_color[1].green = (bg_color_data.green - 0x08) * 256;
-    bg_color[1].blue = (bg_color_data.blue - 0x08) * 256;
-    bg_color[1].flags = DoRed | DoGreen | DoBlue;
-    XAllocColor(dpy, color_map, bg_color+1);
-
-    font_color.red = font_color_data.red * 256;
-    font_color.green = font_color_data.green * 256;
-    font_color.blue = font_color_data.blue * 256;
-    font_color.flags = DoRed | DoGreen | DoBlue;
-    XAllocColor(dpy, color_map, &font_color);
-
-    lines_color.red = lines_color_data.red * 256;
-    lines_color.green = lines_color_data.green * 256;
-    lines_color.blue = lines_color_data.blue * 256;
-    lines_color.flags = DoRed | DoGreen | DoBlue;
-    XAllocColor(dpy, color_map, &lines_color);
+    allocateXColorFromColorData(bg_color, bg_color_data);
+    allocateXColorFromColorData(bg_color + 1, second_bg_color_data);
+    allocateXColorFromColorData(&font_color, font_color_data);
+    allocateXColorFromColorData(&lines_color, lines_color_data);
+    allocateXColorFromColorData(&selected_field_color, selected_field_color_data);
+    allocateXColorFromColorData(&selected_font_color, selected_font_color_data);
 
     // MY:
     XSetWindowAttributes wa;
