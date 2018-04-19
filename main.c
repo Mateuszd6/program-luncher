@@ -2,37 +2,39 @@
 // redrawing it manually makes it weird and sometimes ignores what we just
 // copied into GC.
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
 #include <X11/Xlib.h> // Every Xlib program must include this
 #include <X11/Xutil.h>
 
-#include <assert.h> // I include this to test return values the lazy way
-#include <unistd.h>
-
 #define WINDOW_W (640)
 #define WINDOW_H (256)
 
 int nanosleep(const struct timespec *req, struct timespec *rem);
 
-Display *dpy;
-Window w;
-Screen *s;
-XFontStruct *font;
-GC gc;
-int whiteColor, blackColor;
-Pixmap pixmap;
-Colormap color_map;
+static Display *dpy;
+static Window w;
+static Screen *s;
+static XFontStruct *font;
+static GC gc;
+static int whiteColor, blackColor;
+#if 0
+static Pixmap pixmap;
+#endif
+static Colormap color_map;
 
-XColor bg_color[2];
-XColor font_color;
-XColor lines_color;
-XColor selected_field_color;
-XColor selected_font_color;
+static XColor bg_color[2];
+static XColor font_color;
+static XColor lines_color;
+static XColor selected_field_color;
+static XColor selected_font_color;
 
+// The index of the selected entr, ONLY from printed!
 static int current_select = 0;
 
 typedef struct
@@ -42,34 +44,19 @@ typedef struct
     int blue;
 } ColorData;
 
-const ColorData bg_color_data = {0x1e, 0x1f, 0x1c};
-const ColorData lines_color_data = {0x02, 0x02, 0x02};
-const ColorData font_color_data = {0xCF, 0xCF, 0xCF};
-const ColorData selected_field_color_data = {0xFF, 0x00, 0x00};
-const ColorData selected_font_color_data = {0x00, 0xFF, 0xFF};
+static const ColorData bg_color_data = {0x1e, 0x1f, 0x1c};
+static const ColorData lines_color_data = {0x02, 0x02, 0x02};
+static const ColorData font_color_data = {0xCF, 0xCF, 0xCF};
+static const ColorData selected_field_color_data = {0xFF, 0x00, 0x00};
+static const ColorData selected_font_color_data = {0xFF, 0xFF, 0xFF};
 
 static int draw_lines = 1;
 
-static void set_up_font()
-{
-    const char *fontname =
-        "-*-fixed-*-*-*-*-20-*-*-*-*-*-*-*"; // "-*-helvetica-*-r-*-*-18-*-*-*-*-*-*-*";
-    font = XLoadQueryFont(dpy, fontname);
-
-    /* If the font could not be loaded, revert to the "fixed" font. */
-    if (!font)
-    {
-        fprintf(stderr, "unable to load font %s: using fixed\n", fontname);
-        font = XLoadQueryFont(dpy, "fixed");
-    }
-    XSetFont(dpy, gc, font->fid);
-}
-
-char inserted_text[256];
-int inserted_text_idx = 0;
+static char inserted_text[256];
+static int inserted_text_idx = 0;
 
 #define NUMBER_OF_ENTRIES (25)
-const char *entries[NUMBER_OF_ENTRIES] = {
+static char *entries[NUMBER_OF_ENTRIES] = {
     "Foo",
     "Bar",
     "FooBar",
@@ -98,9 +85,29 @@ const char *entries[NUMBER_OF_ENTRIES] = {
     "Bar again",
     "FooBar again",
     "Scoo again",
-    "Test again"};
+    "Test again"
+};
 
-static int prefixMatch(const char *text, const char *pattern)
+// TODO: refactor this!
+static char *displayed_entries[NUMBER_OF_ENTRIES];
+static int displayed_entries_size = 0;
+
+static void SetUpFont()
+{
+    const char *fontname =
+        "-*-fixed-*-*-*-*-20-*-*-*-*-*-*-*"; // "-*-helvetica-*-r-*-*-18-*-*-*-*-*-*-*";
+    font = XLoadQueryFont(dpy, fontname);
+
+    /* If the font could not be loaded, revert to the "fixed" font. */
+    if (!font)
+    {
+        fprintf(stderr, "unable to load font %s: using fixed\n", fontname);
+        font = XLoadQueryFont(dpy, "fixed");
+    }
+    XSetFont(dpy, gc, font->fid);
+}
+
+static int PrefixMatch(const char *text, const char *pattern)
 {
     for (int i = 0;; ++i)
     {
@@ -113,25 +120,40 @@ static int prefixMatch(const char *text, const char *pattern)
 }
 
 // [text] must be \0 terminated.
-static int getLettersCount(const char *text)
+static int GetLettersCount(const char *text)
 {
     for (int i = 0;; ++i)
         if (text[i] == '\0')
             return i;
 }
 
+#if 0
 // This sets up [curret_select] to the first match.
-static void updateMenu()
+static void UpdateMenu()
 {
+#if 0
     for (int i = 0; i < NUMBER_OF_ENTRIES; ++i)
-        if (prefixMatch(entries[i], inserted_text))
+        if (PrefixMatch(entries[i], inserted_text))
         {
             current_select = i;
             return;
         }
+#else
+    // After update we pick the first one, which is printed.
+    current_select = 0;
+#endif
 }
+#endif
 
-static void redrawWindow()
+static struct
+{
+    int direction;
+    int ascent;
+    int descent;
+    XCharStruct overall;
+} font_info;
+
+static void RedrawWindow()
 {
     // Draw the background.
     XSetForeground(dpy, gc, bg_color[0].pixel);
@@ -139,14 +161,6 @@ static void redrawWindow()
 
     int x = 0;
     int y = 0;
-    int direction = 0;
-    int ascent = 0;
-    int descent = 0;
-    XCharStruct overall;
-
-    XSetForeground(dpy, gc, whiteColor);
-    XTextExtents(font, "Hello World!", getLettersCount("Hello World!"),
-                 &direction, &ascent, &descent, &overall);
 
     x = 5;  // (WINDOW_W - overall.width) / 2;
     y = 20; // WINDOW_H / 2 + (ascent - descent) / 2;
@@ -154,28 +168,34 @@ static void redrawWindow()
     XSetForeground(dpy, gc, font_color.pixel);
     XDrawString(dpy, w, gc, x, y, inserted_text, inserted_text_idx);
 
+    // TODO: Calculatte the number of rects to draw within a window!!
     for (int i = 0; i < 100; ++i)
     {
         XSetForeground(dpy, gc, (i & 1 ? bg_color[0].pixel : bg_color[1].pixel));
-        XFillRectangle(dpy, w, gc, 0, y + i * (ascent - descent + 10) + 5,
-                       WINDOW_W, ascent - descent + 10);
+        XFillRectangle(dpy, w, gc, 0, y + i * (font_info.ascent - font_info.descent + 10) + 5,
+                       WINDOW_W, font_info.ascent - font_info.descent + 10);
     }
 
-    int displayed_entries = 1;
+    displayed_entries_size = 0;
     for (int i = 0; i < NUMBER_OF_ENTRIES; ++i)
+        if (inserted_text[0] == '\0' || PrefixMatch(entries[i], inserted_text))
+            displayed_entries[displayed_entries_size++] = entries[i];
+
+    for (int i = 0; i < displayed_entries_size; ++i)
     {
-        if (inserted_text[0] == '\0' || prefixMatch(entries[i], inserted_text))
+        XSetForeground(dpy, gc, font_color.pixel);
+        if (i == current_select)
         {
-            XSetForeground(dpy, gc, font_color.pixel);
-            if (displayed_entries == 1)
-                XSetForeground(dpy, gc, selected_font_color.pixel);
-
-            XDrawString(dpy, w, gc, x,
-                        y + displayed_entries * (ascent - descent + 10),
-                        entries[i], getLettersCount(entries[i]));
-
-            displayed_entries++;
+            XSetForeground(dpy, gc, selected_field_color.pixel);
+            XFillRectangle(dpy, w, gc, 0, y + i * (font_info.ascent - font_info.descent + 10) + 5,
+                           WINDOW_W, font_info.ascent - font_info.descent + 10);
         }
+
+        XSetForeground(dpy, gc, selected_font_color.pixel);
+        XDrawString(dpy, w, gc, x,
+                    y + (i + 1) * (font_info.ascent - font_info.descent + 10),
+                    displayed_entries[i],
+                    GetLettersCount(displayed_entries[i]));
     }
 
     // Draw the margins:
@@ -189,14 +209,14 @@ static void redrawWindow()
         XFillRectangle(dpy, w, gc, 0, WINDOW_H - 1, WINDOW_W, WINDOW_H);
 
         for (int i = 0; i < 100; ++i)
-            XFillRectangle(dpy, w, gc, 0, y + i * (ascent - descent + 10) + 5,
+            XFillRectangle(dpy, w, gc, 0, y + i * (font_info.ascent - font_info.descent + 10) + 5,
                            WINDOW_W, 1);
     }
 
     // TODO: Or <=?
     assert(current_select < NUMBER_OF_ENTRIES);
     printf("CURRENT SELECTED OPTION TO COMPLETE: %s\n",
-        entries[current_select]);
+        displayed_entries[current_select]);
 
 
     XFlush(dpy);
@@ -207,13 +227,29 @@ static void redrawWindow()
 #endif
 }
 
-void allocateXColorFromColorData(XColor *xcolor, const ColorData data)
+static void CompleteAtCurrent()
+{
+    char *current_complete = displayed_entries[current_select];
+    int curr_complete_size = GetLettersCount(current_complete);
+    for (int i = 0; i < curr_complete_size; ++i)
+        inserted_text[i] = current_complete[i];
+    inserted_text_idx = curr_complete_size;
+}
+
+static void AllocateXColorFromColorData(XColor *xcolor, const ColorData data)
 {
     xcolor->red = data.red * 256;
     xcolor->green = data.green * 256;
     xcolor->blue = data.blue * 256;
     xcolor->flags = DoRed | DoGreen | DoBlue;
     XAllocColor(dpy, color_map, xcolor);
+}
+
+static int LexicographicalCompare(const void *a, const void *b)
+{
+    const char *pa = *(const char**)a;
+    const char *pb = *(const char**)b;
+    return strcmp(pa,pb);
 }
 
 int main()
@@ -234,12 +270,12 @@ int main()
         bg_color_data.blue-0x08
     };
 
-    allocateXColorFromColorData(bg_color, bg_color_data);
-    allocateXColorFromColorData(bg_color + 1, second_bg_color_data);
-    allocateXColorFromColorData(&font_color, font_color_data);
-    allocateXColorFromColorData(&lines_color, lines_color_data);
-    allocateXColorFromColorData(&selected_field_color, selected_field_color_data);
-    allocateXColorFromColorData(&selected_font_color, selected_font_color_data);
+    AllocateXColorFromColorData(bg_color, bg_color_data);
+    AllocateXColorFromColorData(bg_color + 1, second_bg_color_data);
+    AllocateXColorFromColorData(&font_color, font_color_data);
+    AllocateXColorFromColorData(&lines_color, lines_color_data);
+    AllocateXColorFromColorData(&selected_field_color, selected_field_color_data);
+    AllocateXColorFromColorData(&selected_font_color, selected_font_color_data);
 
     // MY:
     XSetWindowAttributes wa;
@@ -315,9 +351,15 @@ int main()
 #endif
     XFillRectangle(dpy, w, gc, 0, 0, WINDOW_W, WINDOW_H);
 
-    set_up_font();
+    SetUpFont();
+    // Calculate font-related stuff.
+    XTextExtents(font, "Hello World!", GetLettersCount("Hello World!"),
+                 &font_info.direction, &font_info.ascent,
+                 &font_info.descent, &font_info.overall);
 
     XFlush(dpy);
+
+    qsort(entries, sizeof(entries) / sizeof(char *), sizeof(char *), LexicographicalCompare);
 
 #if 1
     // a = characters[0][1];
@@ -336,7 +378,7 @@ int main()
     /* XDrawPoint(dpy, pixmap, gc, i, j); */
 #endif
 
-    redrawWindow();
+    RedrawWindow();
 
     // Wait for the MapNotify event
     while (1)
@@ -365,6 +407,13 @@ int main()
                 }
                 break;
 
+                case XK_Tab:
+                {
+                    CompleteAtCurrent();
+                    current_select = 0;
+                    redraw = 1;
+                } break;
+
                 case XK_BackSpace:
                 {
                     if (inserted_text_idx)
@@ -375,6 +424,21 @@ int main()
                     }
                 }
                 break;
+
+                // TODO: Assert that it is smaller that the total number of
+                // displayed entries!
+                case XK_Down:
+                {
+                    current_select++;
+                    redraw = 1;
+                } break;
+
+                // TODO: Assert that it is > 0!
+                case XK_Up:
+                {
+                    current_select--;
+                    redraw = 1;
+                } break;
 
                 case XK_Return:
                 {
@@ -397,14 +461,17 @@ int main()
                 inserted_text[inserted_text_idx++] = string[0];
                 inserted_text[inserted_text_idx] = '\0';
                 redraw = 1;
+                current_select = 0;
             }
 
             if (redraw)
             {
                 // TODO: Update menu might have different conditions that
                 // redraw!
-                updateMenu();
-                redrawWindow();
+#if 0
+                UpdateMenu();
+#endif
+                RedrawWindow();
             }
         }
 
