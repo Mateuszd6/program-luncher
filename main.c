@@ -168,7 +168,7 @@ static void RedrawWindow()
     XSetForeground(dpy, gc, font_color.pixel);
     XDrawString(dpy, w, gc, x, y, inserted_text, inserted_text_idx);
 
-    // TODO: Calculatte the number of rects to draw within a window!!
+    // TODO: Calculate the number of rects to draw within a window!!
     for (int i = 0; i < 100; ++i)
     {
         XSetForeground(dpy, gc, (i & 1 ? bg_color[0].pixel : bg_color[1].pixel));
@@ -252,8 +252,27 @@ static int LexicographicalCompare(const void *a, const void *b)
     return strcmp(pa,pb);
 }
 
+static void LoadEntriesFromStdin()
+{
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t nread;
+
+    // TODO: Getline is not a standard, I get implicte declaration here,
+    // that forces me tu define GNU_SOURCE.
+    while ((nread = getline(&line, &len, stdin)) != -1)
+    {
+        printf("Retrieved line of length %zu:\n", nread);
+        fwrite(line, nread, 1, stdout);
+    }
+}
+
 int main()
 {
+    // TODO: Add ability to specify 'dmenu-mode' and then read from stdin!
+#if 1
+    LoadEntriesFromStdin();
+#endif
     inserted_text[0] = '\0';
 
     dpy = XOpenDisplay(NULL);
