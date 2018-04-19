@@ -55,41 +55,13 @@ static int draw_lines = 1;
 static char inserted_text[256];
 static int inserted_text_idx = 0;
 
-#define NUMBER_OF_ENTRIES (25)
-static char *entries[NUMBER_OF_ENTRIES] = {
-    "Foo",
-    "Bar",
-    "FooBar",
-    "Scoo",
-    "Test",
-
-    "Another string",
-    "More text",
-    "Even more text",
-    "Options options options",
-    "More options",
-
-    "Text, text, text",
-    "Trololololo ",
-    "Blah, Blah, Blah, Blah, Blah, Blah, ",
-    "Teeeeeext",
-    "This is even more stupid text",
-
-    "Another string",
-    "More text",
-    "Even more text",
-    "Options options options",
-    "More options",
-
-    "Foo again",
-    "Bar again",
-    "FooBar again",
-    "Scoo again",
-    "Test again"
-};
+// TODO: Add moar entires!!!!
+#define NUMBER_OF_ENTRIES_IN_BLOCK (256)
+static int number_of_entries = 0;
+static char *entries[NUMBER_OF_ENTRIES_IN_BLOCK];
 
 // TODO: refactor this!
-static char *displayed_entries[NUMBER_OF_ENTRIES];
+static char *displayed_entries[NUMBER_OF_ENTRIES_IN_BLOCK];
 static int displayed_entries_size = 0;
 
 static void SetUpFont()
@@ -177,7 +149,7 @@ static void RedrawWindow()
     }
 
     displayed_entries_size = 0;
-    for (int i = 0; i < NUMBER_OF_ENTRIES; ++i)
+    for (int i = 0; i < number_of_entries; ++i)
         if (inserted_text[0] == '\0' || PrefixMatch(entries[i], inserted_text))
             displayed_entries[displayed_entries_size++] = entries[i];
 
@@ -214,7 +186,7 @@ static void RedrawWindow()
     }
 
     // TODO: Or <=?
-    assert(current_select < NUMBER_OF_ENTRIES);
+    assert(current_select < number_of_entries);
     printf("CURRENT SELECTED OPTION TO COMPLETE: %s\n",
         displayed_entries[current_select]);
 
@@ -254,19 +226,33 @@ static int LexicographicalCompare(const void *a, const void *b)
 
 static void LoadEntriesFromStdin()
 {
-    char *line = NULL;
     size_t len = 0;
     ssize_t nread;
+    char *line = NULL;
 
     // TODO: Getline is not a standard, I get implicte declaration here,
     // that forces me tu define GNU_SOURCE.
+    // NOTE: passing NULL and 0 t getline will make function allocate for us a string.
     while ((nread = getline(&line, &len, stdin)) != -1)
     {
         printf("Retrieved line of length %zu:\n", nread);
         fwrite(line, nread, 1, stdout);
+
+        for (int i = 0; line[i] != '\0'; ++i)
+            if (line[i] == '\n' && line[i+1] == '\0')
+            {
+                line[i] = ('\0');
+                break;
+            }
+
+        entries[number_of_entries++] = line;
+
+        len = 0;
+        line = NULL;
     }
 }
 
+// TODO: How will the app check if stdin is redirected?
 int main()
 {
     // TODO: Add ability to specify 'dmenu-mode' and then read from stdin!
@@ -332,7 +318,8 @@ int main()
 
     if (!grab_succeded)
     {
-        // FAILED!
+        // TODO: Remove this funny kind of obsolete stuff with logging into
+        // weird files.
         printf("Shit!\n");
         system("echo bad > /home/mateusz/log.log");
         exit(3);
@@ -378,7 +365,8 @@ int main()
 
     XFlush(dpy);
 
-    qsort(entries, sizeof(entries) / sizeof(char *), sizeof(char *), LexicographicalCompare);
+    // TODO: If no entries dies here!
+    qsort(entries, number_of_entries, sizeof(char *), LexicographicalCompare);
 
 #if 1
     // a = characters[0][1];
