@@ -52,22 +52,27 @@ typedef struct
 static const ColorData bg_color_data = {0x1e, 0x1f, 0x1c};
 static const ColorData lines_color_data = {0x02, 0x02, 0x02};
 static const ColorData font_color_data = {0xCF, 0xCF, 0xCF};
-static const ColorData selected_field_color_data = {0xFF, 0x00, 0x00};
-static const ColorData selected_font_color_data = {0xFF, 0xFF, 0xFF};
+static const ColorData selected_field_color_data = {0x47, 0x19, 0x8D};
+static const ColorData selected_font_color_data = {0xCF, 0xCF, 0xCF};
 
 static int draw_lines = 1;
 
 static char inserted_text[256];
 static int inserted_text_idx = 0;
 
-// TODO: SUMMART!
+static int fields_drawned = 0;
+
+// If the entry is less than this characters long, it will be stored in a
+// struct, not by the pointer, and the access will be faster.
 #define CHARACTERS_IN_SHORT_TEXT (48)
 
 struct _Entry
 {
     char text[CHARACTERS_IN_SHORT_TEXT];
     char *large_text;
+
     struct _Entry *next_displayed;
+    struct _Entry *prev_displayed;
 };
 typedef struct _Entry Entry;
 
@@ -81,11 +86,6 @@ struct _EntriesBlock
 };
 typedef struct _EntriesBlock EntriesBlock;
 
-#if 0
-static int number_of_entries = 0;
-static char *entries[NUMBER_OF_ENTRIES_IN_BLOCK];
-#endif
-
 // The first block which will be usually enought for all entries.
 // If there are dozens of them, next blocks will be allocated.
 static EntriesBlock first_entries_block = {};
@@ -95,12 +95,10 @@ static Entry *first_displayed_entry = NULL;
 
 // A pointer to the selected entry, must be in a printed list!
 static Entry *current_select = NULL;
-
-#if 0
-// TODO: refactor this!
-static char *displayed_entries[NUMBER_OF_ENTRIES_IN_BLOCK];
-static int displayed_entries_size = 0;
-#endif
+// Which rect (from the top) is highlighted?
+static int current_select_idx =0 ;
+// How many rects (from the top) we must skip to see selected one?
+static int current_select_offset = 0;
 
 static struct
 {
@@ -166,6 +164,10 @@ inline static int EntryMatch(const Entry *entry, const char *text)
 
 static void UpdateDisplayedEntries()
 {
+    first_displayed_entry = NULL;
+
+    current_select = NULL;
+
     Entry *prev_displayed_entry = NULL;
     EntriesBlock *current_block = &first_entries_block;
 
@@ -179,16 +181,29 @@ static void UpdateDisplayedEntries()
                 || EntryMatch(curr_entry, inserted_text))
             {
                 if (prev_displayed_entry)
+                {
+                    // We append to the list.
                     prev_displayed_entry->next_displayed = curr_entry;
+                    curr_entry->prev_displayed = prev_displayed_entry;
+                }
                 else
+                {
+                    // This is a first displayed entry.
                     first_displayed_entry = curr_entry;
+                    curr_entry->prev_displayed = NULL;
+                }
 
+                curr_entry->next_displayed = NULL;
                 prev_displayed_entry = curr_entry;
             }
         }
         current_block = current_block->next;
     }
     while (current_block);
+
+    current_select = first_displayed_entry;
+    current_select_idx = 0;
+    current_select_offset = 0;
 }
 
 inline static char *GetText(Entry *entry)
@@ -211,8 +226,7 @@ static void RedrawWindow()
     XSetForeground(dpy, gc, font_color.pixel);
     XDrawString(dpy, w, gc, x, y, inserted_text, inserted_text_idx);
 
-    // TODO: Calculate the number of rects to draw within a window!!
-    for (int i = 0; i < 100; ++i)
+    for (int i = 0; i < fields_drawned; ++i)
     {
         XSetForeground(dpy, gc, (i & 1 ? bg_color[0].pixel : bg_color[1].pixel));
         XFillRectangle(dpy, w, gc, 0,
@@ -220,20 +234,13 @@ static void RedrawWindow()
                        WINDOW_W, font_info.ascent - font_info.descent + 10);
     }
 
-    UpdateDisplayedEntries();
-
-#if 0
-    displayed_entries_size = 0;
-    for (int i = 0; i < number_of_entries; ++i)
-        if (inserted_text[0] == '\0'
-            || PrefixMatch(entries[i], inserted_text))
-        {
-            displayed_entries[displayed_entries_size++] = entries[i];
-        }
-#endif
-
     int entry_idx = 0;
     Entry *current_entry = first_displayed_entry;
+
+    // Skip first [current_select_offset] entries.
+    for (int i = 0; i < current_select_offset; ++i)
+        current_entry = current_entry->next_displayed;
+
     while (current_entry)
     {
         char *entry_value = GetText(current_entry);
@@ -241,60 +248,67 @@ static void RedrawWindow()
         XSetForeground(dpy, gc, font_color.pixel);
         if (current_entry == current_select)
         {
+//            assert(current_select_offset + current_select_idx == entry_idx);
             XSetForeground(dpy, gc, selected_field_color.pixel);
             XFillRectangle(dpy, w, gc, 0,
                            y + entry_idx * (font_info.ascent - font_info.descent + 10) + 5,
                            WINDOW_W, font_info.ascent - font_info.descent + 10);
+
+            XSetForeground(dpy, gc, selected_font_color.pixel);
         }
 
-        XSetForeground(dpy, gc, selected_font_color.pixel);
         XDrawString(dpy, w, gc, x,
                     y + (entry_idx + 1) * (font_info.ascent - font_info.descent + 10),
                     entry_value, GetLettersCount(entry_value));
 
         current_entry = current_entry->next_displayed;
         entry_idx++;
+
+        if (entry_idx > fields_drawned)
+            break;
     }
 
     // Draw the margins:
     if (draw_lines)
     {
-        // TODO: Change the color to line color!
         XSetForeground(dpy, gc, lines_color.pixel);
         XFillRectangle(dpy, w, gc, 0, 0, WINDOW_W, 1);
         XFillRectangle(dpy, w, gc, 0, 0, 1, WINDOW_H);
         XFillRectangle(dpy, w, gc, WINDOW_W - 1, 0, WINDOW_W, WINDOW_H);
         XFillRectangle(dpy, w, gc, 0, WINDOW_H - 1, WINDOW_W, WINDOW_H);
 
-        for (int i = 0; i < 100; ++i)
+        for (int i = 0; i < fields_drawned; ++i)
             XFillRectangle(dpy, w, gc, 0,
                            y + i * (font_info.ascent - font_info.descent + 10) + 5,
                            WINDOW_W, 1);
     }
 
-    // TODO: Or <=?
-    // TODO: If no entries this assertion is broken. Pattern when
-    // [number_of_entries] == 0?
-    // assert(current_select < number_of_entries); // TODO: BRING BACK THIS ASSERTION!
-#if 0
-    fprintf(stderr, "CURRENT SELECTED OPTION TO COMPLETE: %s\n",
-            GetText(current_select));
+#if 1
+    if (current_select)
+        fprintf(stderr,
+                "CURRENT SELECTED OPTION TO COMPLETE: %s\n",
+                GetText(current_select));
+    else
+        fprintf(stderr, "NO COMPLETION AVAILABLE!\n");
 #endif
     XFlush(dpy);
-
-#if 0
-    fprintf(stderr, inserted_text);
-    fprintf(stderr, "\n");
-#endif
 }
 
 static void CompleteAtCurrent()
 {
-    char *current_complete = GetText(current_select);
-    int curr_complete_size = GetLettersCount(current_complete);
-    for (int i = 0; i < curr_complete_size; ++i)
-        inserted_text[i] = current_complete[i];
-    inserted_text_idx = curr_complete_size;
+    if (current_select)
+    {
+        char *current_complete = GetText(current_select);
+        int curr_complete_size = GetLettersCount(current_complete);
+        for (int i = 0; i < curr_complete_size; ++i)
+            inserted_text[i] = current_complete[i];
+        inserted_text_idx = curr_complete_size;
+    }
+    else
+    {
+        assert(first_displayed_entry);
+        fprintf(stderr, "No option to complete. TAB ignored...\n");
+    }
 }
 
 static void AllocateXColorFromColorData(XColor *xcolor,
@@ -306,16 +320,6 @@ static void AllocateXColorFromColorData(XColor *xcolor,
     xcolor->flags = DoRed | DoGreen | DoBlue;
     XAllocColor(dpy, color_map, xcolor);
 }
-
-#if 0
-static int LexicographicalCompare(const void *a, const void *b)
-{
-    // TODO: Support case (in)sensitivness!
-    const char *pa = *(const char**)a;
-    const char *pb = *(const char**)b;
-    return strcmp(pa,pb);
-}
-#endif
 
 // [value] must be copied!
 static void AddEntry(char *value, int length)
@@ -376,9 +380,6 @@ static void LoadEntriesFromStdin()
             }
 
         AddEntry(line, text_len);
-
-        len = 0;
-        line = NULL;
     }
 
     // TODO: line leaks, but nobody cares. It must be allocated with malloc
@@ -390,30 +391,18 @@ static void LoadEntriesFromStdin()
 // TODO: Add ability to specify 'dmenu-mode' and then read from stdin!
 int main()
 {
-    // TODO: Not sure if this is a must-do.
+    // Inicialize the first block.
     first_entries_block.number_of_entries = 0;
     first_entries_block.next = NULL;
 
     if (dmenu_mode)
-    {
-        // TODO: This hack tries to guess if input is redirected.
-        // Possibly use as a cool feature:
-#if 0
-        if (isatty(STDIN_FILENO))
-            number_of_entries = 0;
-        else
-            LoadEntriesFromStdin();
-#else
         LoadEntriesFromStdin();
-#endif
+    else
+    {
+
     }
 
-#if 0
     inserted_text[0] = '\0';
-#else
-    inserted_text[0] = 'F';
-    inserted_text[1] = '\0';
-#endif
 
     dpy = XOpenDisplay(NULL);
     assert(dpy);
@@ -472,14 +461,11 @@ int main()
 
     if (!grab_succeded)
     {
-        // TODO: Remove this funny kind of obsolete stuff with logging into
-        // weird files.
-        fprintf(stderr, "Shit!\n");
-        system("echo bad > /home/mateusz/log.ALuncher");
-        exit(3);
+        // TODO: Handle this case in a better way!
+        assert(0);
     }
 
-    // For testing stuff that does not work with keyboard nor needs it.
+    // NOTE: For testing stuff that does not work with keyboard nor needs it.
 #if 0
     XUngrabKeyboard(dpy, CurrentTime);
 #endif
@@ -494,21 +480,10 @@ int main()
 
     // Create a "Graphics Context"
     gc = XCreateGC(dpy, w, 0, NULL);
-#if XSetForeground
-    // Tell the GC we draw using the white color
-    0emacs(dpy, gc, blackColor);
 
-    // TODO: Why is is not working?
-    XSetBackground(dpy, gc, whiteColor);
-#endif
-
-    // TODO: DOnt need them here:
-    XSetForeground(dpy, gc, blackColor);
-
-#if 1
     // I guess XParseColor will work here
     XSetForeground(dpy, gc, bg_color[0].pixel);
-#endif
+
     XFillRectangle(dpy, w, gc, 0, 0, WINDOW_W, WINDOW_H);
 
     SetUpFont();
@@ -517,26 +492,12 @@ int main()
                  &font_info.direction, &font_info.ascent,
                  &font_info.descent, &font_info.overall);
 
+    fields_drawned = (int)(WINDOW_H / (font_info.ascent - font_info.descent + 10)) + 1;
     XFlush(dpy);
 
     // qsort(entries, number_of_entries, sizeof(char *), LexicographicalCompare);
 
-#if 1
-    // a = characters[0][1];
-
-    // TODO: PRobobly not the best way, but who cares?
-    // int depth = DefaultDepth(dpy, DefaultScreen(dpy));
-    // pixmap = XCreatePixmapFromBitmapData(dpy, w, (char *)a.pixels, a.w, a.h,
-    // whiteColor, blackColor, depth);
-
-    // XFlush(dpy);
-
-    // XCreatePixmap(dpy, DefaultRootWindow(dpy), a.w, a.h, depth);
-    // for (int i = 0; i < a.w; ++i)
-    // for (int j = 0; j < a.h; ++j)
-    // XDrawPoint(dpy, pixmap, gc, i, j);
-#endif
-
+    UpdateDisplayedEntries();
     RedrawWindow();
 
     // Wait for the MapNotify event
@@ -556,6 +517,7 @@ int main()
             // int len;
             KeySym keysym;
             int redraw = 0;
+            int reset_select = 0;
 
             XLookupString(&e.xkey, string, 25, &keysym, NULL);
             switch (keysym)
@@ -568,9 +530,8 @@ int main()
 
                 case XK_Tab:
                 {
-                    assert(0);
                     CompleteAtCurrent();
-                    current_select = 0;
+                    reset_select = 1;
                     redraw = 1;
                 } break;
 
@@ -580,45 +541,57 @@ int main()
                     {
                         inserted_text_idx--;
                         inserted_text[inserted_text_idx] = '\0';
+
+                        reset_select = 1;
                         redraw = 1;
                     }
                 }
                 break;
 
-                // TODO: Assert that it is smaller that the total number of
-                // displayed entries!
                 case XK_Down:
                 {
-                    assert(0);
-                    //if (current_select < displayed_entries_size - 1)
+                    if (current_select->next_displayed)
                     {
-                        current_select++;
+                        current_select = current_select->next_displayed;
+                        current_select_idx++;
+
+                        // First -1 because one field holds inserted
+                        // text. Second -1 is because we want some space, and
+                        // the last field might be cuted.
+                        while (current_select_idx >= fields_drawned -1 -1)
+                        {
+                            current_select_offset++;
+                            current_select_idx--;
+                        }
                         redraw = 1;
                     }
                 } break;
 
-                // TODO: Assert that it is > 0!
                 case XK_Up:
                 {
-                    assert(0);
-                    // if (current_select > 0)
+                    if (current_select->prev_displayed)
                     {
-                        current_select--;
+                        // If there is previous entry either current_select_idx
+                        // or current_select_offset is > 0.
+                        assert(current_select_offset > 0 || current_select_idx > 0);
+
+                        current_select = current_select->prev_displayed;
+                        current_select_idx > 0
+                            ? current_select_idx--
+                            : current_select_offset--;
+
                         redraw = 1;
                     }
+
                 } break;
 
                 case XK_Return:
                 {
-                    // If there are entries to complete we complete the first one.
-                    // if (displayed_entries_size > 0)
-                    {
-                        CompleteAtCurrent();
-                        current_select = 0; // TODO: probobly not necesarry.
-                    }
 
-                    printf(inserted_text);
-                    putchar('\n');
+                    if (current_select)
+                        CompleteAtCurrent();
+
+                    printf("%s\n", inserted_text);
                     XUngrabKeyboard(dpy, CurrentTime);
                     exit(0);
                 }
@@ -627,26 +600,28 @@ int main()
                 default:
                     break;
             }
-#if 0
-            fprintf(stderr, "String: %s|\n", string);
-#endif
+
             // TODO: Drawable characters!!!!
             if (32 <= string[0] && string[0] <= 126)
             {
                 inserted_text[inserted_text_idx++] = string[0];
                 inserted_text[inserted_text_idx] = '\0';
                 redraw = 1;
-                current_select = 0;
+                reset_select = 1;
+            }
+
+            if (reset_select)
+            {
+                UpdateDisplayedEntries();
             }
 
             if (redraw)
             {
-                // TODO: Update menu might have different conditions that
-                // redraw!
-#if 0
-                UpdateMenu();
-#endif
                 RedrawWindow();
+                fprintf(stderr,
+                        "CURRENT_SELECT_OFFSET: %d\nCURRENT_SELECT_IDX: %d\n",
+                        current_select_offset,
+                        current_select_idx);
             }
         }
 
