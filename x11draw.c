@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 #include <time.h>
@@ -19,7 +20,6 @@ static Screen *s;
 static XFontStruct *font;
 static GC gc;
 
-static int whiteColor, blackColor; // TODO: Remove them?
 static XColor bg_color[2];
 static XColor font_color;
 static XColor lines_color;
@@ -125,9 +125,8 @@ void DrawAndKeyboardInit()
 
     // Initialize color map.
     color_map = XDefaultColormap(dpy, 0);
-    blackColor = BlackPixel(dpy, DefaultScreen(dpy));
-    whiteColor = WhitePixel(dpy, DefaultScreen(dpy));
 
+    // Compute the second BG color from the first one.
     ColorData second_bg_color_data = {
         bg_color_data.red-0x08,
         bg_color_data.green-0x08,

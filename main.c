@@ -15,6 +15,7 @@
 #include "menu.h"
 #include "x11draw.h"
 
+// I get an implicite declaration here, so i have to define it manually.
 ssize_t getline(char **lineptr, size_t *n, FILE *stream);
 
 static int dmenu_mode = 1;
@@ -27,15 +28,9 @@ static void LoadEntriesFromStdin()
     // We allocate it once, so that we can reuse it.
     char *line = malloc(sizeof(char) * 256);
 
-    // TODO: Getline is not a standard, I get implicte declaration here,
-    // that forces me tu define GNU_SOURCE.
-
-    // NOTE: passing NULL and 0 t getline will make function allocate for us a
-    // string.
     while ((nread = getline(&line, &len, stdin)) != -1)
     {
         fprintf(stderr, "Retrieved line of length %zu:\n", nread);
-        // fwrite(line, nread, 1, stdout);
 
         // Remove the newline, and calculate the size
         int text_len = 0;
@@ -55,7 +50,6 @@ static void LoadEntriesFromStdin()
     // character limit.
 }
 
-// TODO: How will the app check if stdin is redirected?
 // TODO: Add ability to specify 'dmenu-mode' and then read from stdin!
 int main()
 {
@@ -72,6 +66,7 @@ int main()
 
     inserted_text[0] = '\0';
 
+    // TODO: Add option to sort entrues Lexicographically?
     // qsort(entries, number_of_entries, sizeof(char *), LexicographicalCompare);
     DrawAndKeyboardInit();
 

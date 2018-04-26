@@ -3,9 +3,9 @@
 
 extern Display *dpy;
 
-void RedrawWindow();
-
 void DrawAndKeyboardInit();
+
+void RedrawWindow();
 
 void EventLoop();
 

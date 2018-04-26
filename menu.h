@@ -36,7 +36,7 @@ extern int current_select_offset;
 
 extern int GetLettersCount(const char *text);
 
-extern inline char *GetText(Entry *entry);
+extern char *GetText(Entry *entry);
 
 void CompleteAtCurrent();
 
