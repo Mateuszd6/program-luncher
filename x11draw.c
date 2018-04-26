@@ -1,20 +1,12 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <assert.h>
-#include <time.h>
-#include <unistd.h>
-
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-
-#include "menu.h"
 
 int nanosleep(const struct timespec *req, struct timespec *rem);
 
 #define WINDOW_W (640)
 #define WINDOW_H (256)
+#define OFFSET_X (5)
+#define OFFSET_Y (20)
 
-Display *dpy; //TODO: make static
+static Display *dpy; //TODO: make static
 static Window w;
 static Screen *s;
 static XFontStruct *font;
@@ -41,7 +33,6 @@ static const ColorData lines_color_data = {0x02, 0x02, 0x02};
 static const ColorData font_color_data = {0xCF, 0xCF, 0xCF};
 static const ColorData selected_field_color_data = {0x47, 0x19, 0x8D};
 static const ColorData selected_font_color_data = {0xCF, 0xCF, 0xCF};
-
 
 // TODO: Drawing options?
 static int draw_lines = 1;
@@ -116,6 +107,67 @@ static void KeyboardInit()
 #endif
 }
 
+void DrawBackground()
+{
+    // Draw the background.
+    XSetForeground(dpy, gc, bg_color[0].pixel);
+    XFillRectangle(dpy, w, gc, 0, 0, WINDOW_W, WINDOW_H);
+
+    for (int i = 0; i < fields_drawned; ++i)
+    {
+        XSetForeground(dpy, gc, (i & 1 ? bg_color[0].pixel : bg_color[1].pixel));
+        XFillRectangle(dpy, w, gc, 0,
+                       OFFSET_Y + i * (font_info.ascent - font_info.descent + 10) + 5,
+                       WINDOW_W, font_info.ascent - font_info.descent + 10);
+    }
+}
+
+void DrawMarginLines()
+{
+    // Draw the margins:
+    if (draw_lines)
+    {
+        XSetForeground(dpy, gc, lines_color.pixel);
+        XFillRectangle(dpy, w, gc, 0, 0, WINDOW_W, 1);
+        XFillRectangle(dpy, w, gc, 0, 0, 1, WINDOW_H);
+        XFillRectangle(dpy, w, gc, WINDOW_W - 1, 0, WINDOW_W, WINDOW_H);
+        XFillRectangle(dpy, w, gc, 0, WINDOW_H - 1, WINDOW_W, WINDOW_H);
+
+        for (int i = 0; i < fields_drawned; ++i)
+            XFillRectangle(dpy, w, gc, 0,
+                           OFFSET_Y + i * (font_info.ascent - font_info.descent + 10) + 5,
+                           WINDOW_W, 1);
+    }
+}
+
+void DrawInertedText(const char *text)
+{
+    XSetForeground(dpy, gc, font_color.pixel);
+    XDrawString(dpy, w, gc, OFFSET_X, OFFSET_Y, text, GetLettersCount(text));
+}
+
+// Return 1 if there is no space for another entry
+int DrawEntry(const char *text, const int entry_idx, const int selected)
+{
+    XSetForeground(dpy, gc, font_color.pixel);
+    if (selected)
+    {
+        XSetForeground(dpy, gc, selected_field_color.pixel);
+        XFillRectangle(dpy, w, gc, 0,
+                       OFFSET_Y + entry_idx * (font_info.ascent - font_info.descent + 10) + 5,
+                       WINDOW_W, font_info.ascent - font_info.descent + 10);
+
+        XSetForeground(dpy, gc, selected_font_color.pixel);
+
+    }
+
+    XDrawString(dpy, w, gc, OFFSET_X,
+                    OFFSET_Y + (entry_idx + 1) * (font_info.ascent - font_info.descent + 10),
+                    text, GetLettersCount(text));
+
+    return (entry_idx + 1 > fields_drawned);
+}
+
 void DrawAndKeyboardInit()
 {
     dpy = XOpenDisplay(NULL);
@@ -181,225 +233,4 @@ void DrawAndKeyboardInit()
 
     fields_drawned = (int)(WINDOW_H / (font_info.ascent - font_info.descent + 10)) + 1;
     XFlush(dpy);
-}
-
-void RedrawWindow()
-{
-    // Draw the background.
-    XSetForeground(dpy, gc, bg_color[0].pixel);
-    XFillRectangle(dpy, w, gc, 0, 0, WINDOW_W, WINDOW_H);
-
-    int x = 0;
-    int y = 0;
-
-    x = 5;
-    y = 20;
-
-    XSetForeground(dpy, gc, font_color.pixel);
-    XDrawString(dpy, w, gc, x, y, inserted_text, inserted_text_idx);
-
-    for (int i = 0; i < fields_drawned; ++i)
-    {
-        XSetForeground(dpy, gc, (i & 1 ? bg_color[0].pixel : bg_color[1].pixel));
-        XFillRectangle(dpy, w, gc, 0,
-                       y + i * (font_info.ascent - font_info.descent + 10) + 5,
-                       WINDOW_W, font_info.ascent - font_info.descent + 10);
-    }
-
-    int entry_idx = 0;
-    Entry *current_entry = first_displayed_entry;
-
-    // Skip first [current_select_offset] entries.
-    for (int i = 0; i < current_select_offset; ++i)
-        current_entry = current_entry->next_displayed;
-
-    while (current_entry)
-    {
-        char *entry_value = GetText(current_entry);
-
-        XSetForeground(dpy, gc, font_color.pixel);
-        if (current_entry == current_select)
-        {
-            XSetForeground(dpy, gc, selected_field_color.pixel);
-            XFillRectangle(dpy, w, gc, 0,
-                           y + entry_idx * (font_info.ascent - font_info.descent + 10) + 5,
-                           WINDOW_W, font_info.ascent - font_info.descent + 10);
-
-            XSetForeground(dpy, gc, selected_font_color.pixel);
-        }
-
-        XDrawString(dpy, w, gc, x,
-                    y + (entry_idx + 1) * (font_info.ascent - font_info.descent + 10),
-                    entry_value, GetLettersCount(entry_value));
-
-        current_entry = current_entry->next_displayed;
-        entry_idx++;
-
-        if (entry_idx > fields_drawned)
-            break;
-    }
-
-    // Draw the margins:
-    if (draw_lines)
-    {
-        XSetForeground(dpy, gc, lines_color.pixel);
-        XFillRectangle(dpy, w, gc, 0, 0, WINDOW_W, 1);
-        XFillRectangle(dpy, w, gc, 0, 0, 1, WINDOW_H);
-        XFillRectangle(dpy, w, gc, WINDOW_W - 1, 0, WINDOW_W, WINDOW_H);
-        XFillRectangle(dpy, w, gc, 0, WINDOW_H - 1, WINDOW_W, WINDOW_H);
-
-        for (int i = 0; i < fields_drawned; ++i)
-            XFillRectangle(dpy, w, gc, 0,
-                           y + i * (font_info.ascent - font_info.descent + 10) + 5,
-                           WINDOW_W, 1);
-    }
-
-#if 1
-    if (current_select)
-        fprintf(stderr,
-                "CURRENT SELECTED OPTION TO COMPLETE: %s\n",
-                GetText(current_select));
-    else
-        fprintf(stderr, "NO COMPLETION AVAILABLE!\n");
-#endif
-    XFlush(dpy);
-}
-
-void EventLoop()
-{
-    while (1)
-    {
-        int key_press = 0;
-
-        XEvent e;
-        XNextEvent(dpy, &e);
-        // TODO: ?
-        // if (e.type == MapNotify)
-        //    break;
-        // else
-        if (e.type == KeyPress)
-        {
-            key_press++;
-            char string[25];
-            // int len;
-            KeySym keysym;
-            int redraw = 0;
-            int reset_select = 0;
-
-            XLookupString(&e.xkey, string, 25, &keysym, NULL);
-            switch (keysym)
-            {
-                case XK_Escape:
-                {
-                    exit(12);
-                }
-                break;
-
-                case XK_Tab:
-                {
-                    CompleteAtCurrent();
-                    reset_select = 1;
-                    redraw = 1;
-                } break;
-
-                case XK_BackSpace:
-                {
-                    if (inserted_text_idx)
-                    {
-                        inserted_text_idx--;
-                        inserted_text[inserted_text_idx] = '\0';
-
-                        reset_select = 1;
-                        redraw = 1;
-                    }
-                }
-                break;
-
-                case XK_Down:
-                {
-                    if (current_select->next_displayed)
-                    {
-                        current_select = current_select->next_displayed;
-                        current_select_idx++;
-
-                        // First -1 because one field holds inserted
-                        // text. Second -1 is because we want some space, and
-                        // the last field might be cuted.
-                        while (current_select_idx >= fields_drawned -1 -1)
-                        {
-                            current_select_offset++;
-                            current_select_idx--;
-                        }
-                        redraw = 1;
-                    }
-                } break;
-
-                case XK_Up:
-                {
-                    if (current_select->prev_displayed)
-                    {
-                        // If there is previous entry either current_select_idx
-                        // or current_select_offset is > 0.
-                        assert(current_select_offset > 0 || current_select_idx > 0);
-
-                        current_select = current_select->prev_displayed;
-                        current_select_idx > 0
-                            ? current_select_idx--
-                            : current_select_offset--;
-
-                        redraw = 1;
-                    }
-
-                } break;
-
-                case XK_Return:
-                {
-
-                    if (current_select)
-                        CompleteAtCurrent();
-
-                    printf("%s\n", inserted_text);
-                    XUngrabKeyboard(dpy, CurrentTime);
-                    exit(0);
-                }
-                break;
-
-                default:
-                    break;
-            }
-
-            // TODO: Drawable characters!!!!
-            if (32 <= string[0] && string[0] <= 126)
-            {
-                inserted_text[inserted_text_idx++] = string[0];
-                inserted_text[inserted_text_idx] = '\0';
-                redraw = 1;
-                reset_select = 1;
-            }
-
-            if (reset_select)
-            {
-                UpdateDisplayedEntries();
-            }
-
-            if (redraw)
-            {
-                RedrawWindow();
-                fprintf(stderr,
-                        "CURRENT_SELECT_OFFSET: %d\nCURRENT_SELECT_IDX: %d\n",
-                        current_select_offset,
-                        current_select_idx);
-            }
-        }
-
-        else if (e.type == ButtonPress)
-        {
-            XCloseDisplay(dpy);
-            exit(2);
-        }
-        else if (e.type == Expose)
-        {
-            fprintf(stderr, "Exposed?\n");
-        }
-    }
 }
