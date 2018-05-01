@@ -1,6 +1,5 @@
-// TODO: Investigate how does X want us to redraw the window, because
-// redrawing it manually makes it weird and sometimes ignores what we just
-// copied into GC.
+// TODO: Investigate how does X want us to redraw the window, because redrawing
+// it manually makes it weird and sometimes ignores what we just copied into GC.
 
 // TODO: Refactor stderr printfs
 #include <assert.h>
@@ -24,7 +23,7 @@ int GetLettersCount(const char *text)
 
 #include "x11draw.c"
 
-static int dmenu_mode = 1;
+static int dmenu_mode = 0;
 
 // Command used to run a program in a terminal. Not used in dmenu mode.
 char *terminal_command = "gnome-terminal --";
@@ -191,11 +190,19 @@ char *DuplicateString(const char *s)
     return p;
 }
 
+DesktopEntry *desktop_entries;
+int desktop_entries_size = 0;
+
 void LoadEntriesFromDotDesktop(const char *path)
 {
     DIR *dir;
     struct dirent *ent;
     char buffer[256];
+
+    int result_idx = 0,
+        result_max_len = 64;
+    DesktopEntry *result = malloc(sizeof(DesktopEntry) * result_max_len);
+
     if ((dir = opendir(path)) != NULL)
     {
         char *line = malloc(sizeof(char) * 256);
@@ -208,7 +215,6 @@ void LoadEntriesFromDotDesktop(const char *path)
             {
                 buffer[0] = '\0';
                 const char *file_path = strcat(strcat(buffer, path), ent->d_name);
-                printf("OPENNING: %s\n", file_path);
 
                 FILE *file = fopen(file_path, "r");
                 assert(file);
@@ -240,7 +246,6 @@ void LoadEntriesFromDotDesktop(const char *path)
                         }
                     }
 
-                    // fprintf(stderr, "Retrieved line of length %d:\n", nread);
                     if (!header_checked)
                     {
                         // TODO: Handle this case better!
@@ -274,35 +279,81 @@ void LoadEntriesFromDotDesktop(const char *path)
                              && strncmp(line, DESKTOP_TERM_FIELD, DESKTOP_TERM_FIELD_SIZE) == 0)
                     {
                         char *term = line + DESKTOP_TERM_FIELD_SIZE;
-                        if (strcmp(term, "true\n") == 0)
+                        if (strcmp(term, "true\n") == 0 || strcmp(term, "true") == 0)
                             terminal = 1;
                     }
                     else if (strlen(line) > DESKTOP_NO_DISPLAY_FIELD_SIZE
                              && strncmp(line, DESKTOP_NO_DISPLAY_FIELD, DESKTOP_NO_DISPLAY_FIELD_SIZE) == 0)
                     {
                         char *display_info = line + DESKTOP_NO_DISPLAY_FIELD_SIZE;
-                        if (display_info && strcmp(display_info, "true\n") == 0)
+                        if (display_info
+                            && (strcmp(display_info, "true\n") == 0
+                                || strcmp(display_info, "true") == 0))
                             ignore_this_entry = 1;
-                        else
-                            printf("\tUnexpected nodisplay field: %s\n", line);
                     }
-                    // else
-                    // printf("IGNORED ENTRY: %s\n", line);
                 }
-
-                // TODO: Remove %'s and add termianl before the entry.
 
                 if (header_checked && !ignore_this_entry && info.name && info.exec)
                 {
-                    char *new_exec = malloc(sizeof(info.exec) + sizeof(terminal_command) + 1);
-                    new_exec[0] = '\0';
                     if (terminal)
-                        info.exec = strcat(strcat(strcat(new_exec, terminal_command), " "), info.exec);
-                    printf("GOOD ENTRY: %s; %s\n", info.name, info.exec);
-                }
-                else
-                {
-                    printf("BAD ENTRY: %s\n", line);
+                    {
+                        int termnial_command_size = strlen(terminal_command),
+                            exec_original_size = strlen(info.exec);
+
+                        info.exec = realloc(info.exec, sizeof(char) *
+                                            (exec_original_size + termnial_command_size + 1));
+
+                        memcpy(info.exec + termnial_command_size + 1,
+                               info.exec,
+                               sizeof(char) * exec_original_size);
+
+                        for (int i = 0; i < termnial_command_size; ++i)
+                            info.exec[i] = terminal_command[i];
+
+                        info.exec[termnial_command_size] = ' ';
+
+                    }
+
+                    // Remove %'s:
+                    int fixed_idx = 0;
+                    for (int i = 0;
+                         info.exec[i] != '\0' && info.exec[i] != '\n';
+                         ++i)
+                    {
+                        if (info.exec[i] == '%'
+                            && info.exec[i+1] != '\0'
+                            && info.exec[i+1] != '\n')
+                        {
+                            i += 2;
+                        }
+
+                        info.exec[fixed_idx++] = info.exec[i];
+                    }
+                    info.exec[fixed_idx] = '\0';
+
+                    // Remove newline from the name:
+                    for (int i = 0; info.name[i] != '\0'; ++i)
+                        if (info.name[i] == '\n')
+                        {
+                            info.name[i] = '\0';
+                            break;
+                        }
+
+                    // Remove newline from the name:
+                    for (int i = 0; info.exec[i] != '\0'; ++i)
+                        if (info.exec[i] == '\n')
+                        {
+                            info.exec[i] = '\0';
+                            break;
+                        }
+
+                    if (result_idx >= result_max_len)
+                    {
+                        result_max_len *= 2;
+                        result = realloc(result, sizeof(DesktopEntry) * result_max_len);
+                    }
+
+                    result[result_idx++] = (DesktopEntry){ info.name, info.exec };
                 }
 
                 fclose(file);
@@ -310,8 +361,21 @@ void LoadEntriesFromDotDesktop(const char *path)
 
         closedir(dir);
     }
-    else
-        printf("could not open directory");
+
+
+    int CompareNameLex (const void * a, const void * b)
+    {
+        return strcmp(((DesktopEntry *)a)->name, ((DesktopEntry *)b)->name);
+    }
+
+    // TODO: Do we need to sort?
+    qsort(result, result_idx, sizeof(DesktopEntry), CompareNameLex);
+
+    for (int i = 0; i < result_idx; ++i)
+        AddEntry(result[i].name, strlen(result[i].name));
+
+    desktop_entries = result;
+    desktop_entries_size = result_idx;
 }
 
 void LoadEntriesFromStdin()
@@ -342,6 +406,26 @@ void LoadEntriesFromStdin()
     // TODO: line leaks, but nobody cares. It must be allocated with malloc
     // because getline will try to reallocate it when gets more that out
     // character limit.
+}
+
+void HandeOutput(const char *output)
+{
+    if (output[0] == '\0')
+        return;
+
+    // TODO: Moar modez!
+    if (dmenu_mode)
+    {
+        printf("%s\n", output);
+    }
+    else
+    {
+        for (int i = 0; i < desktop_entries_size; ++i)
+        {
+            if (strcmp(output, desktop_entries[i].name) == 0)
+                printf(desktop_entries[i].exec);
+        }
+    }
 }
 
 void CompleteAtCurrent()
@@ -415,6 +499,8 @@ void RedrawWindow()
     for (int i = 0; i < current_select_offset; ++i)
         current_entry = current_entry->next_displayed;
 
+    DrawInertedText(inserted_text);
+
     while (current_entry)
     {
         char *entry_value = GetText(current_entry);
@@ -429,7 +515,6 @@ void RedrawWindow()
     }
 
     DrawMarginLines();
-
 
 #if 1
     if (current_select)
@@ -528,13 +613,10 @@ void EventLoop()
 
                 case XK_Return:
                 {
-
                     if (current_select)
                         CompleteAtCurrent();
 
-                    printf("%s\n", inserted_text);
-                    XUngrabKeyboard(dpy, CurrentTime);
-                    exit(0);
+                    return;
                 }
                 break;
 
@@ -581,9 +663,6 @@ void EventLoop()
 // TODO: Add ability to specify 'dmenu-mode' and then read from stdin!
 int main()
 {
-    LoadEntriesFromDotDesktop("/usr/share/applications/");
-    return 0;
-
     // Inicialize the first block.
     first_entries_block.number_of_entries = 0;
     first_entries_block.next = NULL;
@@ -592,12 +671,12 @@ int main()
         LoadEntriesFromStdin();
     else
     {
-
+        LoadEntriesFromDotDesktop("/usr/share/applications/");
     }
 
     inserted_text[0] = '\0';
 
-    // TODO: Add option to sort entrues Lexicographically?
+    // TODO: Add option to sort entrues Lexicographically? Move it to dmenu mode start if any.
     // qsort(entries, number_of_entries, sizeof(char *), LexicographicalCompare);
 
     DrawAndKeyboardInit();
@@ -607,6 +686,8 @@ int main()
 
     EventLoop();
 
-    // XUngrabKeyboard(dpy, CurrentTime);
+    XUngrabKeyboard(dpy, CurrentTime);
+
+    HandeOutput(inserted_text);
     return 0;
 }
