@@ -1,12 +1,11 @@
-
-int nanosleep(const struct timespec *req, struct timespec *rem);
+#include "util.h"
 
 #define WINDOW_W (640)
 #define WINDOW_H (256)
 #define OFFSET_X (5)
 #define OFFSET_Y (20)
 
-static Display *dpy; //TODO: make static
+static Display *dpy; // TODO: make static
 static Window w;
 static Screen *s;
 static XFontStruct *font;
@@ -65,9 +64,7 @@ static void SetUpFont()
     XSetFont(dpy, gc, font->fid);
 }
 
-
-static void AllocateXColorFromColorData(XColor *xcolor,
-                                        const ColorData data)
+static void AllocateXColorFromColorData(XColor *xcolor, const ColorData data)
 {
     xcolor->red = data.red * 256;
     xcolor->green = data.green * 256;
@@ -115,9 +112,11 @@ void DrawBackground()
 
     for (int i = 0; i < fields_drawned; ++i)
     {
-        XSetForeground(dpy, gc, (i & 1 ? bg_color[0].pixel : bg_color[1].pixel));
+        XSetForeground(dpy, gc,
+                       (i & 1 ? bg_color[0].pixel : bg_color[1].pixel));
         XFillRectangle(dpy, w, gc, 0,
-                       OFFSET_Y + i * (font_info.ascent - font_info.descent + 10) + 5,
+                       OFFSET_Y +
+                           i * (font_info.ascent - font_info.descent + 10) + 5,
                        WINDOW_W, font_info.ascent - font_info.descent + 10);
     }
 }
@@ -134,9 +133,10 @@ void DrawMarginLines()
         XFillRectangle(dpy, w, gc, 0, WINDOW_H - 1, WINDOW_W, WINDOW_H);
 
         for (int i = 0; i < fields_drawned; ++i)
-            XFillRectangle(dpy, w, gc, 0,
-                           OFFSET_Y + i * (font_info.ascent - font_info.descent + 10) + 5,
-                           WINDOW_W, 1);
+            XFillRectangle(
+                dpy, w, gc, 0,
+                OFFSET_Y + i * (font_info.ascent - font_info.descent + 10) + 5,
+                WINDOW_W, 1);
     }
 }
 
@@ -153,17 +153,19 @@ int DrawEntry(const char *text, const int entry_idx, const int selected)
     if (selected)
     {
         XSetForeground(dpy, gc, selected_field_color.pixel);
-        XFillRectangle(dpy, w, gc, 0,
-                       OFFSET_Y + entry_idx * (font_info.ascent - font_info.descent + 10) + 5,
-                       WINDOW_W, font_info.ascent - font_info.descent + 10);
+        XFillRectangle(
+            dpy, w, gc, 0,
+            OFFSET_Y + entry_idx * (font_info.ascent - font_info.descent + 10) +
+                5,
+            WINDOW_W, font_info.ascent - font_info.descent + 10);
 
         XSetForeground(dpy, gc, selected_font_color.pixel);
-
     }
 
     XDrawString(dpy, w, gc, OFFSET_X,
-                    OFFSET_Y + (entry_idx + 1) * (font_info.ascent - font_info.descent + 10),
-                    text, GetLettersCount(text));
+                OFFSET_Y + (entry_idx + 1) *
+                               (font_info.ascent - font_info.descent + 10),
+                text, GetLettersCount(text));
 
     return (entry_idx + 1 > fields_drawned);
 }
@@ -179,17 +181,16 @@ void DrawAndKeyboardInit()
     color_map = XDefaultColormap(dpy, 0);
 
     // Compute the second BG color from the first one.
-    ColorData second_bg_color_data = {
-        bg_color_data.red-0x08,
-        bg_color_data.green-0x08,
-        bg_color_data.blue-0x08
-    };
+    ColorData second_bg_color_data = {bg_color_data.red - 0x08,
+                                      bg_color_data.green - 0x08,
+                                      bg_color_data.blue - 0x08};
 
     AllocateXColorFromColorData(bg_color, bg_color_data);
     AllocateXColorFromColorData(bg_color + 1, second_bg_color_data);
     AllocateXColorFromColorData(&font_color, font_color_data);
     AllocateXColorFromColorData(&lines_color, lines_color_data);
-    AllocateXColorFromColorData(&selected_field_color, selected_field_color_data);
+    AllocateXColorFromColorData(&selected_field_color,
+                                selected_field_color_data);
     AllocateXColorFromColorData(&selected_font_color, selected_font_color_data);
 
     // MY:
@@ -226,11 +227,13 @@ void DrawAndKeyboardInit()
     XFillRectangle(dpy, w, gc, 0, 0, WINDOW_W, WINDOW_H);
 
     SetUpFont();
+
     // Calculate font-related stuff.
     XTextExtents(font, "Hello World!", sizeof("Hello World!"),
                  &font_info.direction, &font_info.ascent,
                  &font_info.descent, &font_info.overall);
 
-    fields_drawned = (int)(WINDOW_H / (font_info.ascent - font_info.descent + 10)) + 1;
+    fields_drawned =
+        (int)(WINDOW_H / (font_info.ascent - font_info.descent + 10)) + 1;
     XFlush(dpy);
 }
