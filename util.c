@@ -54,3 +54,11 @@ static inline int SuffixMatch(const char *text, const char *pattern)
 
     return 1;
 }
+
+
+static char *DuplicateString(const char *s)
+{
+    char *p = malloc(strlen(s) + 1);
+    if(p) { strcpy(p, s); }
+    return p;
+}

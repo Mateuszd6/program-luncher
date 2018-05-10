@@ -1,11 +1,5 @@
 #include "util.h"
 
-typedef struct
-{
-    char *name;
-    char *exec;
-} DesktopEntry;
-
 // TODO: Refactor these!
 #define DESKTOP_NAME_FIELD "Name="
 #define DESKTOP_NAME_FIELD_SIZE (5)
@@ -20,13 +14,6 @@ typedef struct
 
 char *terminal_command = "i3-sensible-terminal -e";
 
-char *DuplicateString(const char *s)
-{
-    char *p = malloc(strlen(s) + 1);
-    if(p) { strcpy(p, s); }
-    return p;
-}
-
 // TODO.
 #if 0
 void SaveDesktopEntriesInfoToCacheFile(const char *path_to_cache_file,
@@ -37,9 +24,10 @@ void SaveDesktopEntriesInfoToCacheFile(const char *path_to_cache_file,
 }
 #endif
 
-void LoadEntriesFromDotDesktop(const char *path,
-                               DesktopEntry **result_desktop_entries,
-                               int *result_desktop_entries_size)
+// TODO: Move to menu.c once it is cleaned up.
+static void LoadEntriesFromDotDesktop(const char *path,
+                                      DesktopEntry **result_desktop_entries,
+                                      int *result_desktop_entries_size)
 {
     DIR *dir;
     struct dirent *ent;

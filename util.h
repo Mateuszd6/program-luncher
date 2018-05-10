@@ -9,4 +9,6 @@ static inline int PrefixMatch(const char *text, const char *pattern);
 
 static inline int SuffixMatch(const char *text, const char *pattern);
 
+static char *DuplicateString(const char *s);
+
 #endif // __UTIL_H__
