@@ -145,11 +145,14 @@ static void HandeOutput(const char *output)
             if (strcmp(output, desktop_entries[i].name) == 0)
             {
                 printf(desktop_entries[i].exec);
-                char buffer[strlen(desktop_entries[i].exec) + strlen(" &")];
+                // TODO: Calculate the length properly.
+                char buffer[strlen(desktop_entries[i].exec) + strlen(" i3-msg exec ''")];
                 buffer[0] = '\0';
+
                 // TODO: Add ability to specify command by the user (use % to
                 // replace a command to call).
-                strcat(strcat(buffer, "i3-msg exec "), desktop_entries[i].exec);
+                strcat(strcat(strcat(buffer, "i3-msg exec '"),
+                              desktop_entries[i].exec), "'");
                 system(buffer);
                 break;
             }
@@ -420,14 +423,13 @@ int main()
     // qsort(entries, number_of_entries, sizeof(char *), LexicographicalCompare);
 
     DrawAndKeyboardInit();
-
     UpdateDisplayedEntries();
     RedrawWindow();
 
     EventLoop();
 
     XUngrabKeyboard(dpy, CurrentTime);
-
     HandeOutput(inserted_text);
+
     return 0;
 }
