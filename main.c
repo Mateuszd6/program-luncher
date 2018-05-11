@@ -99,94 +99,54 @@ static void EventLoop()
             KeySym keysym;
             int redraw = 0;
             int reset_select = 0;
+            UpdateMenuFeedback update_feedback = UMF_NONE;
 
             XLookupString(&e.xkey, string, 25, &keysym, NULL);
             switch (keysym)
             {
                 case XK_Escape:
-                {
-                    exit(12);
-                }
-                break;
+                    exit(4);
+                    break;
 
                 case XK_Tab:
-                {
-                    CompleteAtCurrent();
-                    reset_select = 1;
-                    redraw = 1;
-                } break;
+                    update_feedback = MenuCompleteAtCurrent();
+                    break;
 
                 case XK_BackSpace:
-                {
-                    if (inserted_text_idx)
-                    {
-                        inserted_text_idx--;
-                        inserted_text[inserted_text_idx] = '\0';
-
-                        reset_select = 1;
-                        redraw = 1;
-                    }
-                }
-                break;
+                    update_feedback = MenuRemoveCharacter();
+                    break;
 
                 case XK_Down:
-                {
-                    if (current_select->next_displayed)
-                    {
-                        current_select = current_select->next_displayed;
-                        current_select_idx++;
-
-                        // First -1 because one field holds inserted
-                        // text. Second -1 is because we want some space, and
-                        // the last field might be cuted.
-                        while (current_select_idx >= fields_drawned -1 -1)
-                        {
-                            current_select_offset++;
-                            current_select_idx--;
-                        }
-                        redraw = 1;
-                    }
-                } break;
+                    update_feedback = MenuMoveDown(fields_drawned);
+                    break;
 
                 case XK_Up:
-                {
-                    if (current_select->prev_displayed)
-                    {
-                        // If there is previous entry either current_select_idx
-                        // or current_select_offset is > 0.
-                        assert(current_select_offset > 0 || current_select_idx > 0);
+                    update_feedback = MenuMoveUp();
+                    break;
 
-                        current_select = current_select->prev_displayed;
-                        current_select_idx > 0
-                            ? current_select_idx--
-                            : current_select_offset--;
-
-                        redraw = 1;
-                    }
-
-                } break;
-
+                // TODO: Move to menu.c
                 case XK_Return:
                 {
                     if (current_select)
-                        CompleteAtCurrent();
+                        MenuCompleteAtCurrent();
 
+                    // This breaks the event loop by exitting this function.
                     return;
                 }
                 break;
 
                 default:
-                    break;
+                {
+                    // TODO: Drawable characters!!!!
+                    if (32 <= string[0] && string[0] <= 126)
+                    {
+                        update_feedback = MenuAddCharacter(string[0]);
+                    }
+                } break;
             }
 
-            // TODO: Drawable characters!!!!
-            if (32 <= string[0] && string[0] <= 126)
-            {
-                inserted_text[inserted_text_idx++] = string[0];
-                inserted_text[inserted_text_idx] = '\0';
-                redraw = 1;
-                reset_select = 1;
-            }
+            redraw = update_feedback & UMF_REDRAW;
+            reset_select = update_feedback & UMF_RESET_SELECT;
 
             if (reset_select)
             {
@@ -203,11 +163,6 @@ static void EventLoop()
             }
         }
 
-        else if (e.type == ButtonPress)
-        {
-            XCloseDisplay(dpy);
-            exit(2);
-        }
         else if (e.type == Expose)
         {
             fprintf(stderr, "Exposed?\n");

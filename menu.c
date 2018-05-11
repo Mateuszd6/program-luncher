@@ -67,24 +67,6 @@ static void AddEntry(char *value, int length)
     new_entry->next_displayed = NULL;
 }
 
-static void CompleteAtCurrent()
-{
-    if (current_select)
-    {
-        char *current_complete = StringGetText(&current_select->text);
-        int curr_complete_size = GetLettersCount(current_complete);
-        for (int i = 0; i < curr_complete_size; ++i)
-            inserted_text[i] = current_complete[i];
-        inserted_text_idx = curr_complete_size;
-    }
-    else
-    {
-        // TODO: Make sure this assert is correct!
-        assert(!first_displayed_entry);
-        fprintf(stderr, "No option to complete. TAB ignored...\n");
-    }
-}
-
 static void UpdateDisplayedEntries()
 {
     first_displayed_entry = NULL;
@@ -154,6 +136,9 @@ static void HandeOutput(const char *output)
                 // replace a command to call).
                 strcat(strcat(strcat(buffer, "i3-msg exec '"),
                               StringGetText(&desktop_entries[i].exec)), "'");
+
+                printf("COMMAND: %s\n", buffer);
+
                 system(buffer);
                 break;
             }
@@ -188,4 +173,95 @@ static void LoadEntriesFromStdin()
     }
 
     free(line);
+}
+
+// TODO: Specify how much? (more that one line which is current limitation)!
+
+typedef enum
+{
+    UMF_NONE = 0,
+    UMF_REDRAW = 1,
+    UMF_RESET_SELECT = 2
+} UpdateMenuFeedback;
+
+static UpdateMenuFeedback MenuCompleteAtCurrent()
+{
+    if (current_select)
+    {
+        char *current_complete = StringGetText(&current_select->text);
+        int curr_complete_size = GetLettersCount(current_complete);
+        for (int i = 0; i < curr_complete_size; ++i)
+            inserted_text[i] = current_complete[i];
+        inserted_text_idx = curr_complete_size;
+    }
+    else
+    {
+        // TODO: Make sure this assert is correct!
+        assert(!first_displayed_entry);
+        fprintf(stderr, "No option to complete. TAB ignored...\n");
+    }
+
+    return UMF_REDRAW | UMF_RESET_SELECT;
+}
+
+// If 1 is returned windows requires the redraw, is 0 it does not.
+static UpdateMenuFeedback MenuMoveUp()
+{
+    if (current_select->prev_displayed)
+    {
+        // If there is previous entry either current_select_idx
+        // or current_select_offset is > 0.
+        assert(current_select_offset > 0 || current_select_idx > 0);
+
+        current_select = current_select->prev_displayed;
+        current_select_idx > 0
+            ? current_select_idx--
+            : current_select_offset--;
+
+        return UMF_REDRAW;
+    }
+
+    return UMF_NONE;
+}
+
+// TODO: try to move number_of_fields_drawned to this module so that it does not
+// need to be passed as an argument.
+static UpdateMenuFeedback MenuMoveDown(int number_of_fields_drawned)
+{
+    if (current_select->next_displayed)
+    {
+        current_select = current_select->next_displayed;
+        current_select_idx++;
+
+        // First -1 because one field holds inserted
+        // text. Second -1 is because we want some space, and
+        // the last field might be cuted.
+        while (current_select_idx >= number_of_fields_drawned -1 -1)
+        {
+            current_select_offset++;
+            current_select_idx--;
+        }
+        return UMF_REDRAW;
+    }
+
+    return UMF_NONE;
+}
+
+static UpdateMenuFeedback MenuAddCharacter(const char ch)
+{
+    inserted_text[inserted_text_idx++] = ch;
+    inserted_text[inserted_text_idx] = '\0';
+
+    return UMF_REDRAW | UMF_RESET_SELECT;
+}
+
+static UpdateMenuFeedback MenuRemoveCharacter()
+{
+    if (inserted_text_idx)
+    {
+        inserted_text_idx--;
+        inserted_text[inserted_text_idx] = '\0';
+    }
+
+    return UMF_REDRAW | UMF_RESET_SELECT;
 }
