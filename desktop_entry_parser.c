@@ -143,19 +143,17 @@ static void LoadEntriesFromDotDesktop(const char *path,
                         int fixed_exec_command_size = exec_original_size +
                             termnial_command_size + 1 + 1;
 
-                        // TODO: Bulletprove!
-                        char tmp_buffer[fixed_exec_command_size];
                         current_exec = realloc(current_exec, sizeof(char) * fixed_exec_command_size);
                         assert(current_exec);
 
                         // TODO: See if memcpy optimizes this (probobly not worth it).
                         for (int i = 0; i < exec_original_size; ++i)
-                            tmp_buffer[i + termnial_command_size+1] = tmp_buffer[i];
+                            current_exec[i + termnial_command_size+1] = current_exec[i];
                         for (int i = 0; i < termnial_command_size; ++i)
-                            tmp_buffer[i] = terminal_command[i];
+                            current_exec[i] = terminal_command[i];
 
-                        tmp_buffer[termnial_command_size] = ' ';
-                        tmp_buffer[exec_original_size + termnial_command_size + 1] = '\0';
+                        current_exec[termnial_command_size] = ' ';
+                        current_exec[exec_original_size + termnial_command_size + 1] = '\0';
                     }
 
                     // Remove %'s:
