@@ -5,6 +5,15 @@ static inline char *StringGetText(String *str)
     return str->large_text ? str->large_text : str->text;
 }
 
+static inline String StringMakeEmpty()
+{
+    String result;
+    result.text[0] = '\0';
+    result.large_text = NULL;
+
+    return result;
+}
+
 static inline String MakeStringCopyText(const char *text, int text_len)
 {
     String result;
@@ -22,4 +31,9 @@ static inline String MakeStringCopyText(const char *text, int text_len)
     }
 
     return result;
+}
+
+static inline int StringIsEmpty(const String *str)
+{
+    return (!str->large_text && str->text[0] == '\0');
 }

@@ -19,7 +19,8 @@ int getline(char **lineptr, size_t *n, FILE *stream);
 // ^Same here.
 int nanosleep(const struct timespec *req, struct timespec *rem);
 
-// TODO: deal with this!
+// TODO: Deal with this! (The one and only call left is in the
+// desktop entry parser).
 static void AddEntry(char *value, int length);
 
 #include "util.h"

@@ -53,8 +53,11 @@ static void LoadEntriesFromDotDesktop(const char *path,
                 FILE *file = fopen(file_path, "r");
                 assert(file);
 
-                // TODO: This is very unintuitive way to do it, just make to char *'s.
-                DesktopEntry info = { NULL, NULL };
+                char *current_exec;
+                char *current_name;
+
+                StringMakeEmpty();
+                StringMakeEmpty();
 
                 int terminal = 0; // Is app using terminal or not (TODO: tricky)
                 int header_checked = 0; // There is [DesktopEntry] header.
@@ -102,14 +105,14 @@ static void LoadEntriesFromDotDesktop(const char *path,
                     {
                         char *name = line + DESKTOP_NAME_FIELD_SIZE;
                         if (name)
-                            info.name = DuplicateString(name);
+                            current_name = DuplicateString(name);
                     }
                     else if (strlen(line) > DESKTOP_EXEC_FIELD_SIZE
                              && strncmp(line, DESKTOP_EXEC_FIELD, DESKTOP_EXEC_FIELD_SIZE) == 0)
                     {
                         char *exec = line + DESKTOP_EXEC_FIELD_SIZE;
                         if (exec)
-                            info.exec = DuplicateString(exec);
+                            current_exec = DuplicateString(exec);
                     }
                     else if (strlen(line) > DESKTOP_TERM_FIELD_SIZE
                              && strncmp(line, DESKTOP_TERM_FIELD, DESKTOP_TERM_FIELD_SIZE) == 0)
@@ -129,57 +132,62 @@ static void LoadEntriesFromDotDesktop(const char *path,
                     }
                 }
 
-                if (header_checked && !ignore_this_entry && info.name && info.exec)
+                if (header_checked && !ignore_this_entry && current_name && current_exec)
                 {
                     if (terminal)
                     {
                         int termnial_command_size = strlen(terminal_command),
-                            exec_original_size = strlen(info.exec);
+                            exec_original_size = strlen(current_exec);
 
                         // NOTE: '+1 +1' - 1 for space, 1 for trailing '\0'
-                        info.exec = realloc(info.exec, sizeof(char) *
-                                            (exec_original_size + termnial_command_size + 1 + 1));
+                        int fixed_exec_command_size = exec_original_size +
+                            termnial_command_size + 1 + 1;
+
+                        // TODO: Bulletprove!
+                        char tmp_buffer[fixed_exec_command_size];
+                        current_exec = realloc(current_exec, sizeof(char) * fixed_exec_command_size);
+                        assert(current_exec);
 
                         // TODO: See if memcpy optimizes this (probobly not worth it).
                         for (int i = 0; i < exec_original_size; ++i)
-                            info.exec[i + termnial_command_size+1] = info.exec[i];
+                            tmp_buffer[i + termnial_command_size+1] = tmp_buffer[i];
                         for (int i = 0; i < termnial_command_size; ++i)
-                            info.exec[i] = terminal_command[i];
+                            tmp_buffer[i] = terminal_command[i];
 
-                        info.exec[termnial_command_size] = ' ';
-                        info.exec[exec_original_size + termnial_command_size + 1] = '\0';
+                        tmp_buffer[termnial_command_size] = ' ';
+                        tmp_buffer[exec_original_size + termnial_command_size + 1] = '\0';
                     }
 
                     // Remove %'s:
                     int fixed_idx = 0;
                     for (int i = 0;
-                         info.exec[i] != '\0' && info.exec[i] != '\n';
+                         current_exec[i] != '\0' && current_exec[i] != '\n';
                          ++i)
                     {
-                        if (info.exec[i] == '%'
-                            && info.exec[i+1] != '\0'
-                            && info.exec[i+1] != '\n')
+                        if (current_exec[i] == '%'
+                            && current_exec[i+1] != '\0'
+                            && current_exec[i+1] != '\n')
                         {
                             i += 2;
                         }
 
-                        info.exec[fixed_idx++] = info.exec[i];
+                        current_exec[fixed_idx++] = current_exec[i];
                     }
-                    info.exec[fixed_idx] = '\0';
+                    current_exec[fixed_idx] = '\0';
 
                     // Remove newline from the name:
-                    for (int i = 0; info.name[i] != '\0'; ++i)
-                        if (info.name[i] == '\n')
+                    for (int i = 0; current_name[i] != '\0'; ++i)
+                        if (current_name[i] == '\n')
                         {
-                            info.name[i] = '\0';
+                            current_name[i] = '\0';
                             break;
                         }
 
                     // Remove newline from the name:
-                    for (int i = 0; info.exec[i] != '\0'; ++i)
-                        if (info.exec[i] == '\n')
+                    for (int i = 0; current_exec[i] != '\0'; ++i)
+                        if (current_exec[i] == '\n')
                         {
-                            info.exec[i] = '\0';
+                            current_exec[i] = '\0';
                             break;
                         }
 
@@ -189,15 +197,16 @@ static void LoadEntriesFromDotDesktop(const char *path,
                         result = realloc(result, sizeof(DesktopEntry) * result_max_len);
                     }
 
-                    result[result_idx++] = (DesktopEntry){ info.name, info.exec };
+                    // TODO: Make a copy!
+                    result[result_idx++] = (DesktopEntry) {
+                        MakeStringCopyText(current_name, strlen(current_name)),
+                        MakeStringCopyText(current_exec, strlen(current_exec)) };
                 }
-                else
-                {
-                    if (info.name)
-                        free(info.name);
-                    if (info.exec)
-                        free(info.exec);
-                }
+
+                if (current_name)
+                    free(current_name);
+                if (current_exec)
+                    free(current_exec);
 
                 fclose(file);
             }
@@ -209,14 +218,16 @@ static void LoadEntriesFromDotDesktop(const char *path,
 
     int CompareNameLex (const void * a, const void * b)
     {
-        return strcmp(((DesktopEntry *)a)->name, ((DesktopEntry *)b)->name);
+        return strcmp((StringGetText(&((DesktopEntry *)a)->name)),
+                      (StringGetText(&((DesktopEntry *)b)->name)));
     }
 
     // TODO: Do we need to sort?
     qsort(result, result_idx, sizeof(DesktopEntry), CompareNameLex);
 
     for (int i = 0; i < result_idx; ++i)
-        AddEntry(result[i].name, strlen(result[i].name));
+        AddEntry(StringGetText(&(result[i].name)),
+                 strlen(StringGetText(&(result[i].name))));
 
     (* result_desktop_entries) = result;
     (* result_desktop_entries_size) = result_idx;

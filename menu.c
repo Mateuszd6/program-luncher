@@ -143,17 +143,17 @@ static void HandeOutput(const char *output)
     {
         // Iterate over desktop entries and find the matching one.
         for (int i = 0; i < desktop_entries_size; ++i)
-            if (strcmp(output, desktop_entries[i].name) == 0)
+            if (strcmp(output, StringGetText(&desktop_entries[i].name)) == 0)
             {
-                printf(desktop_entries[i].exec);
+                printf(StringGetText(&desktop_entries[i].exec));
                 // TODO: Calculate the length properly.
-                char buffer[strlen(desktop_entries[i].exec) + strlen(" i3-msg exec ''")];
+                char buffer[strlen(StringGetText(&desktop_entries[i].exec)) + strlen(" i3-msg exec ''")];
                 buffer[0] = '\0';
 
                 // TODO: Add ability to specify command by the user (use % to
                 // replace a command to call).
                 strcat(strcat(strcat(buffer, "i3-msg exec '"),
-                              desktop_entries[i].exec), "'");
+                              StringGetText(&desktop_entries[i].exec)), "'");
                 system(buffer);
                 break;
             }

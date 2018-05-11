@@ -15,6 +15,10 @@ typedef struct
 
 static inline char *StringGetText(String *str);
 
+static inline String StringMakeEmpty();
+
 static inline String MakeStringCopyText(const char *text, int text_len);
+
+static inline int StringIsEmpty(const String *str);
 
 #endif // __STRING_H__

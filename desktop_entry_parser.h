@@ -1,10 +1,12 @@
 #ifndef __DESKTOP_ENTRY_PARSER_H__
 #define __DESKTOP_ENTRY_PARSER_H__
 
+#include "string.h"
+
 typedef struct
 {
-    char *name;
-    char *exec;
+    String name;
+    String exec;
 } DesktopEntry;
 
 #endif // __DESKTOP_ENTRY_PARSER_H__
