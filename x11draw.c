@@ -1,4 +1,5 @@
 #include "util.h"
+#include "x11draw.h"
 
 #define WINDOW_W (640)
 #define WINDOW_H (256)
@@ -19,19 +20,12 @@ static XColor selected_font_color;
 
 static Colormap color_map;
 
-typedef struct
-{
-    int red;
-    int green;
-    int blue;
-} ColorData;
-
 // TODO: Add ability to specify colors by the user.
-static const ColorData bg_color_data = {0x1e, 0x1f, 0x1c};
-static const ColorData lines_color_data = {0x02, 0x02, 0x02};
-static const ColorData font_color_data = {0xCF, 0xCF, 0xCF};
-static const ColorData selected_field_color_data = {0x47, 0x19, 0x8D};
-static const ColorData selected_font_color_data = {0xCF, 0xCF, 0xCF};
+static ColorData bg_color_data = {0x1e, 0x1f, 0x1c};
+static ColorData lines_color_data = {0x02, 0x02, 0x02};
+static ColorData font_color_data = {0xCF, 0xCF, 0xCF};
+static ColorData selected_field_color_data = {0x47, 0x19, 0x8D};
+static ColorData selected_font_color_data = {0xCF, 0xCF, 0xCF};
 
 // TODO: Drawing options?
 static int draw_lines = 1;
@@ -181,9 +175,9 @@ void DrawAndKeyboardInit()
     color_map = XDefaultColormap(dpy, 0);
 
     // Compute the second BG color from the first one.
-    ColorData second_bg_color_data = {bg_color_data.red - 0x08,
-                                      bg_color_data.green - 0x08,
-                                      bg_color_data.blue - 0x08};
+    ColorData second_bg_color_data = {MAX(bg_color_data.red - 0x08, 0),
+                                      MAX(bg_color_data.green - 0x08, 0),
+                                      MAX(bg_color_data.blue - 0x08, 0)};
 
     AllocateXColorFromColorData(bg_color, bg_color_data);
     AllocateXColorFromColorData(bg_color + 1, second_bg_color_data);

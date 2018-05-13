@@ -45,7 +45,12 @@ int inserted_text_idx;
 
 inline static int EntryMatch(Entry *entry, const char *text)
 {
-    return PrefixMatch(StringGetText(&entry->text), text);
+    if (PrefixMatch(StringGetText(&entry->text), text))
+        return 2;
+    else if (TextMatch(StringGetText(&entry->text), text))
+        return 1;
+    else
+        return 0;
 }
 
 static void AddEntry(char *value, int length)
@@ -111,37 +116,81 @@ static void UpdateDisplayedEntries()
     current_select_offset = 0;
 }
 
+static void UpdateDisplayedEntriesAfterAppendingCharacter()
+{
+    assert(inserted_text[0] != '\0');
+
+    Entry *prev_entry = NULL;
+    Entry *next_entry_candidate = first_displayed_entry;
+
+    Entry *first_with_not_full_match = NULL;
+    Entry *prev_with_not_full_match = NULL;
+
+    first_displayed_entry = NULL;
+
+    while (next_entry_candidate)
+    {
+        Entry *current_entry = next_entry_candidate;
+        next_entry_candidate = next_entry_candidate->next_displayed;
+
+        if (EntryMatch(current_entry, inserted_text))
+        {
+            printf("%s matches insted text: %s\n",
+                   StringGetText(&current_entry->text), inserted_text);
+
+            if (prev_entry)
+                prev_entry->next_displayed = current_entry;
+            else
+                first_displayed_entry = current_entry;
+
+            current_entry->prev_displayed = prev_entry;
+            current_entry->next_displayed = NULL;
+            prev_entry = current_entry;
+        }
+    }
+
+    // TODO: This is a copy paste from the function below.
+    current_select = first_displayed_entry;
+    current_select_idx = 0;
+    current_select_offset = 0;
+}
+
 static void HandeOutput(const char *output)
 {
     if (output[0] == '\0')
         return;
 
-    // TODO: Moar modez!
-    if (dmenu_mode)
+    switch(menu_mode)
     {
-        printf("%s\n", output);
-    }
-    else
-    {
-        // Iterate over desktop entries and find the matching one.
-        for (int i = 0; i < desktop_entries_size; ++i)
-            if (strcmp(output, StringGetText(&desktop_entries[i].name)) == 0)
-            {
-                printf(StringGetText(&desktop_entries[i].exec));
-                // TODO: Calculate the length properly.
-                char buffer[strlen(StringGetText(&desktop_entries[i].exec)) + strlen(" i3-msg exec ''")];
-                buffer[0] = '\0';
+        case MM_DMENU:
+            printf("%s\n", output);
+            break;
 
-                // TODO: Add ability to specify command by the user (use % to
-                // replace a command to call).
-                strcat(strcat(strcat(buffer, "i3-msg exec '"),
-                              StringGetText(&desktop_entries[i].exec)), "'");
+        case MM_APP_LUNCHER:
+        {
+            // Iterate over desktop entries and find the matching one.
+            for (int i = 0; i < desktop_entries_size; ++i)
+                if (strcmp(output, StringGetText(&desktop_entries[i].name)) == 0)
+                {
+                    printf(StringGetText(&desktop_entries[i].exec));
+                    // TODO: Calculate the length properly.
+                    char buffer[strlen(StringGetText(&desktop_entries[i].exec)) + strlen(" i3-msg exec ''")];
+                    buffer[0] = '\0';
 
-                printf("COMMAND: %s\n", buffer);
+                    // TODO: Add ability to specify command by the user (use % to
+                    // replace a command to call).
+                    strcat(strcat(strcat(buffer, "i3-msg exec '"),
+                                  StringGetText(&desktop_entries[i].exec)), "'");
 
-                system(buffer);
-                break;
-            }
+                    printf("COMMAND: %s\n", buffer);
+
+                    system(buffer);
+                    break;
+                }
+        } break;
+
+        default:
+            assert(!"Not supported menu type!\n");
     }
 }
 
@@ -175,13 +224,41 @@ static void LoadEntriesFromStdin()
     free(line);
 }
 
+// TODO: Once its ready, move this function here.
+static void LoadEntriesFromDotDesktop(const char *path,
+                                      DesktopEntry **result_desktop_entries,
+                                      int *result_desktop_entries_size);
+
+static void MenuInit()
+{
+    switch(menu_mode)
+    {
+        case MM_DMENU:
+            LoadEntriesFromStdin();
+            break;
+
+        case MM_APP_LUNCHER:
+            LoadEntriesFromDotDesktop("/usr/share/applications/",
+                                      &desktop_entries,
+                                      &desktop_entries_size);
+            break;
+
+
+        default:
+            assert(!"Not supported menu type!\n");
+    }
+
+
+}
+
 // TODO: Specify how much? (more that one line which is current limitation)!
 
 typedef enum
 {
     UMF_NONE = 0,
     UMF_REDRAW = 1,
-    UMF_RESET_SELECT = 2
+    UMF_RESET_SELECT = 2,
+    UMF_RESET_AFTER_APPEND = 4
 } UpdateMenuFeedback;
 
 static UpdateMenuFeedback MenuCompleteAtCurrent()
@@ -252,7 +329,7 @@ static UpdateMenuFeedback MenuAddCharacter(const char ch)
     inserted_text[inserted_text_idx++] = ch;
     inserted_text[inserted_text_idx] = '\0';
 
-    return UMF_REDRAW | UMF_RESET_SELECT;
+    return UMF_REDRAW | UMF_RESET_AFTER_APPEND;
 }
 
 static UpdateMenuFeedback MenuRemoveCharacter()

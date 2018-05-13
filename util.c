@@ -19,6 +19,10 @@ static inline char ToLower(const char c)
 // Is [pattern] a prefix of [text]?
 static inline int PrefixMatch(const char *text, const char *pattern)
 {
+#if 0
+    printf("\tDoin prefix match: %s, %s\n", text, pattern);
+#endif
+
     for (int i = 0;; ++i)
     {
         if (pattern[i] == '\0')
@@ -47,14 +51,59 @@ static inline int SuffixMatch(const char *text, const char *pattern)
     for (int i = 0; i < pattern_len; ++i)
     {
         assert(text[text_len-pattern_len+i] != '\0');
-        if ((case_sensitive ? text[text_len-pattern_len+i] != pattern[i] :
-             ToLower(text[text_len-pattern_len+i]) != ToLower(pattern[i])))
+        if ((case_sensitive
+             ? text[text_len-pattern_len+i] != pattern[i]
+             : ToLower(text[text_len-pattern_len+i]) != ToLower(pattern[i])))
+        {
             return 0;
+        }
     }
 
     return 1;
 }
 
+// TODO: implement KMP.
+static inline int PatternMatchBruteForce(const char *text, const char *pattern)
+{
+    for (int i = 0; text[i] != '\0'; ++i)
+        if (PrefixMatch(&text[i], pattern))
+            return 1;
+
+    return 0;
+}
+
+static inline int TextMatch(const char *text, const char *pattern)
+{
+    char buffer[strlen(pattern) + 1];
+    const char *previous = pattern;
+    const char *current;
+    for (current = pattern;;
+         current++)
+    {
+        if ((* current) == ' ' || (* current) == '\0')
+        {
+            size_t len = current-previous;
+            strncpy(buffer, previous, len);
+            buffer[len] = '\0';
+            int match = PatternMatchBruteForce(text, buffer);
+
+#if 0
+            printf("[%s]\tPATTERN: %s(len: %ld), TEXT: %s\n",
+                   match ? "x" : " ", buffer, len, text);
+#endif
+
+            if (!match)
+                return 0;
+
+            if ((* current) == '\0')
+                break;
+
+            previous = current + 1;
+        }
+    }
+
+    return 1;
+}
 
 static char *DuplicateString(const char *s)
 {

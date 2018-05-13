@@ -13,23 +13,28 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
-// I get an implicite declaration here, so i have to define it manually.
+// TODO: I get an implicite declaration here, so i have to define it manually.
 int getline(char **lineptr, size_t *n, FILE *stream);
 
-// ^Same here.
+// TODO: ^Same here.
 int nanosleep(const struct timespec *req, struct timespec *rem);
-
-// TODO: Deal with this! (The one and only call left is in the
-// desktop entry parser).
-static void AddEntry(char *value, int length);
 
 #include "util.h"
 #include "string.h"
 #include "desktop_entry_parser.h"
+#include "x11draw.h"
 
 // TODO: Menu settings.
 static int case_sensitive = 0;
-static int dmenu_mode = 0;
+
+// TODO: move to menu:
+typedef enum
+{
+    MM_DMENU = 0,
+    MM_APP_LUNCHER = 1
+} MenuMode;
+
+static MenuMode menu_mode = MM_APP_LUNCHER;
 
 #include "menu.c"
 #include "x11draw.c"
@@ -99,6 +104,8 @@ static void EventLoop()
             KeySym keysym;
             int redraw = 0;
             int reset_select = 0;
+            int reset_append = 0;
+
             UpdateMenuFeedback update_feedback = UMF_NONE;
 
             XLookupString(&e.xkey, string, 25, &keysym, NULL);
@@ -147,10 +154,16 @@ static void EventLoop()
 
             redraw = update_feedback & UMF_REDRAW;
             reset_select = update_feedback & UMF_RESET_SELECT;
+            reset_append = update_feedback & UMF_RESET_AFTER_APPEND;
 
             if (reset_select)
             {
                 UpdateDisplayedEntries();
+            }
+
+            if (reset_append)
+            {
+                UpdateDisplayedEntriesAfterAppendingCharacter();
             }
 
             if (redraw)
@@ -170,21 +183,99 @@ static void EventLoop()
     }
 }
 
-// TODO: Add ability to specify 'dmenu-mode' and then read from stdin!
-int main()
+static int ParseColor(const char *color, ColorData *res_data)
 {
+    if (color[0] != '#' || strlen(color) != 7)
+    {
+        return 0;
+    }
+
+    unsigned char result[3];
+    for (int i = 0; i < 3; ++i)
+    {
+        int value[2];
+        for (int j = 0; j < 2; ++j)
+        {
+            char character = color[1 + 2*i + j];
+
+            // If not in rage 0-9 and (after ToLower) not in rage a-f.
+            if (character < '0' || character > '9')
+            {
+                if (ToLower(character) < 'a' || ToLower(character) > 'f')
+                    return 0;
+                else
+                    value[j] = character - 'a' + 10;
+            }
+            else
+                value[j] = character - '0';
+        }
+
+        result[i] = value[0] * 16 + value[1];
+    }
+
+    (* res_data) = (ColorData) { result[0], result[1], result[2] };
+    return 1;
+}
+
+// TODO: Add ability to specify 'dmenu-mode' and then read from stdin!
+int main(int argc, char **argv)
+{
+    void GetCurrentArgAsColorAndAssingIt(const int arg_idx, const int arg_count,
+                                         ColorData *color_to_assing_ptr)
+    {
+        if (arg_idx >= arg_count)
+        {
+            // TODO: print usage...
+            fprintf(stderr, "Bad arguments!\n");
+            exit(1);
+        }
+
+        const char *color = argv[arg_idx];
+
+        if (!ParseColor(color, color_to_assing_ptr))
+        {
+            fprintf(stderr, "Not supported color format!\n");
+            exit(1);
+        }
+    }
+
+    // TODO: This is a placeholder for the real argument parser.
+    for (int i = 1; i < argc; ++i)
+    {
+        if (strcmp(argv[i], "--dmenu") == 0)
+            menu_mode = MM_DMENU;
+        else if (strcmp(argv[i], "-nb") == 0 || strcmp(argv[i], "--nb") == 0)
+        {
+            ++i;
+            GetCurrentArgAsColorAndAssingIt(i, argc, &bg_color_data);
+        }
+        else if (strcmp(argv[i], "-nf") == 0 || strcmp(argv[i], "--nf") == 0)
+        {
+            ++i;
+            GetCurrentArgAsColorAndAssingIt(i, argc, &font_color_data);
+        }
+        else if (strcmp(argv[i], "-sb") == 0 || strcmp(argv[i], "--sb") == 0)
+        {
+            ++i;
+            GetCurrentArgAsColorAndAssingIt(i, argc, &selected_field_color_data);
+        }
+        else if (strcmp(argv[i], "-sf") == 0 || strcmp(argv[i], "--sf") == 0)
+        {
+            ++i;
+            GetCurrentArgAsColorAndAssingIt(i, argc, &selected_font_color_data);
+        }
+        else
+        {
+            fprintf(stderr, "No idea what does arg %s mean!\n", argv[i]);
+            exit(1);
+        }
+    }
+
     // Inicialize the first block.
     first_entries_block.number_of_entries = 0;
     first_entries_block.next = NULL;
 
-    if (dmenu_mode)
-        LoadEntriesFromStdin();
-    else
-    {
-        LoadEntriesFromDotDesktop("/usr/share/applications/",
-                                  &desktop_entries,
-                                  &desktop_entries_size);
-    }
+    MenuInit();
 
     inserted_text[0] = '\0';
 
