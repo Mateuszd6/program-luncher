@@ -34,6 +34,7 @@ typedef enum
     MM_APP_LUNCHER = 1
 } MenuMode;
 
+// This is the default mode.
 static MenuMode menu_mode = MM_APP_LUNCHER;
 
 #include "menu.c"
@@ -244,6 +245,8 @@ int main(int argc, char **argv)
     {
         if (strcmp(argv[i], "--dmenu") == 0)
             menu_mode = MM_DMENU;
+        else if (strcmp(argv[i], "--app-luncher") == 0)
+            menu_mode = MM_APP_LUNCHER;
         else if (strcmp(argv[i], "-nb") == 0 || strcmp(argv[i], "--nb") == 0)
         {
             ++i;

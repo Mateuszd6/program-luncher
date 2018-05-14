@@ -72,21 +72,81 @@ static void AddEntry(char *value, int length)
     new_entry->next_displayed = NULL;
 }
 
+static void AddEntryToMatchList(Entry *current_entry,
+                                Entry **prefix_matched_head,
+                                Entry **prefix_matched_tail,
+                                Entry **non_full_matched_head,
+                                Entry **non_full_matched_tail)
+{
+    int match_level = EntryMatch(current_entry, inserted_text);
+
+    switch (match_level)
+    {
+        // Prefix match; Add to the list of fixes.
+        case 2:
+        {
+            if (* prefix_matched_tail)
+                (* prefix_matched_tail)->next_displayed = current_entry;
+            else
+                (* prefix_matched_head) = current_entry;
+
+            current_entry->prev_displayed = (* prefix_matched_tail);
+            current_entry->next_displayed = NULL;
+            (* prefix_matched_tail) = current_entry;
+        } break;
+
+        // Weaker match. Append to the back.
+        case 1:
+        {
+            if (!(* non_full_matched_tail))
+            {
+                assert(!( *non_full_matched_head));
+                (* non_full_matched_head) = current_entry;
+                (* non_full_matched_tail) = current_entry;
+                current_entry->next_displayed = NULL;
+                current_entry->prev_displayed = NULL;
+            }
+            else
+            {
+                assert(* non_full_matched_head);
+                (* non_full_matched_tail)->next_displayed = current_entry;
+                current_entry->next_displayed = NULL;
+                current_entry->prev_displayed = (* non_full_matched_tail);
+                (* non_full_matched_tail) = current_entry;
+            }
+        } break;
+
+        // No match; do nothing.
+        case 0:
+            break;
+
+        default:
+            assert(!"Unsupported match level!");
+    }
+}
+
 static void UpdateDisplayedEntries()
 {
     first_displayed_entry = NULL;
 
     current_select = NULL;
 
-    Entry *prev_displayed_entry = NULL;
+    Entry *prev_entry = NULL;
     EntriesBlock *current_block = &first_entries_block;
 
+    Entry *first_with_not_full_match = NULL;
+    Entry *last_with_not_full_match = NULL;
+
+    // TODO: BUG: type "el". After space + backspace it works ok, but after many
+    // spaces backspace throws the entries in wrong order!!! This probobly does
+    // have something to do with trailing spaces.
     do
     {
         for (int i = 0; i < current_block->number_of_entries; ++i)
         {
-            Entry *curr_entry = &(current_block->entries[i]);
+            Entry *current_entry = &(current_block->entries[i]);
 
+#if 0
             if (inserted_text[0] == '\0'
                 || EntryMatch(curr_entry, inserted_text))
             {
@@ -106,16 +166,38 @@ static void UpdateDisplayedEntries()
                 curr_entry->next_displayed = NULL;
                 prev_displayed_entry = curr_entry;
             }
+#else
+            AddEntryToMatchList(current_entry,
+                                &first_displayed_entry,
+                                &prev_entry,
+                                &first_with_not_full_match,
+                                &last_with_not_full_match);
+#endif
         }
         current_block = current_block->next;
     }
     while (current_block);
+
+    if (prev_entry)
+    {
+        assert(first_displayed_entry);
+        assert(!prev_entry->next_displayed);
+        prev_entry->next_displayed = first_with_not_full_match;
+    }
+    else
+    {
+        assert(!first_displayed_entry);
+        first_displayed_entry = first_with_not_full_match;
+    }
 
     current_select = first_displayed_entry;
     current_select_idx = 0;
     current_select_offset = 0;
 }
 
+// Same as above, but does it faster, as it only check already matched text. It
+// can be used after appending a letter (letters) to the inserted text, but
+// after deleteion, this function cannot be used.
 static void UpdateDisplayedEntriesAfterAppendingCharacter()
 {
     assert(inserted_text[0] != '\0');
@@ -124,29 +206,80 @@ static void UpdateDisplayedEntriesAfterAppendingCharacter()
     Entry *next_entry_candidate = first_displayed_entry;
 
     Entry *first_with_not_full_match = NULL;
-    Entry *prev_with_not_full_match = NULL;
+    Entry *last_with_not_full_match = NULL;
 
     first_displayed_entry = NULL;
 
     while (next_entry_candidate)
     {
+
         Entry *current_entry = next_entry_candidate;
         next_entry_candidate = next_entry_candidate->next_displayed;
+#if 0
+        int match_level = EntryMatch(current_entry, inserted_text);
 
-        if (EntryMatch(current_entry, inserted_text))
+        switch (match_level)
         {
-            printf("%s matches insted text: %s\n",
-                   StringGetText(&current_entry->text), inserted_text);
+            // Prefix match; Add to the list of fixes.
+            case 2:
+            {
+                if (prev_entry)
+                    prev_entry->next_displayed = current_entry;
+                else
+                    first_displayed_entry = current_entry;
 
-            if (prev_entry)
-                prev_entry->next_displayed = current_entry;
-            else
-                first_displayed_entry = current_entry;
+                current_entry->prev_displayed = prev_entry;
+                current_entry->next_displayed = NULL;
+                prev_entry = current_entry;
+            } break;
 
-            current_entry->prev_displayed = prev_entry;
-            current_entry->next_displayed = NULL;
-            prev_entry = current_entry;
+            // Weaker match. Append to the back.
+            case 1:
+            {
+                if (!last_with_not_full_match)
+                {
+                    assert(!first_with_not_full_match);
+                    first_with_not_full_match = current_entry;
+                    last_with_not_full_match = current_entry;
+                    current_entry->next_displayed = NULL;
+                    current_entry->prev_displayed = NULL;
+                }
+                else
+                {
+                    assert(first_with_not_full_match);
+                    last_with_not_full_match->next_displayed = current_entry;
+                    current_entry->next_displayed = NULL;
+                    current_entry->prev_displayed = last_with_not_full_match;
+                    last_with_not_full_match = current_entry;
+                }
+            } break;
+
+            // No match; do nothing.
+            case 0:
+                break;
+
+            default:
+                assert(!"Unsupported match level!");
         }
+#else
+        AddEntryToMatchList(current_entry,
+                            &first_displayed_entry,
+                            &prev_entry,
+                            &first_with_not_full_match,
+                            &last_with_not_full_match);
+#endif
+    }
+
+    if (prev_entry)
+    {
+        assert(first_displayed_entry);
+        assert(!prev_entry->next_displayed);
+        prev_entry->next_displayed = first_with_not_full_match;
+    }
+    else
+    {
+        assert(!first_displayed_entry);
+        first_displayed_entry = first_with_not_full_match;
     }
 
     // TODO: This is a copy paste from the function below.
