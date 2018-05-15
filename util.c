@@ -34,6 +34,33 @@ static inline int PrefixMatch(const char *text, const char *pattern)
     }
 }
 
+// Is [pattern] a prefix of [text]?
+static inline int PrefixMatchWithTrimmedPattern(const char *text, const char *pattern)
+{
+#if 0
+    printf("\tDoin prefix match: %s, %s\n", text, pattern);
+#endif
+    while (* pattern == ' ')
+        pattern++;
+
+    const char *end = pattern;
+    while (* end != '\0')
+        end++;
+
+    while (end != pattern && * (end - 1) == ' ')
+        end--;
+
+    for (int i = 0;; ++i)
+    {
+        if (&pattern[i] == end)
+            return 1;
+
+        if (text[i] == '\0' || (case_sensitive ? text[i] != pattern[i] :
+                                ToLower(text[i]) != ToLower(pattern[i])))
+            return 0;
+    }
+}
+
 // Is [pattern] a suffix of [text]?
 static inline int SuffixMatch(const char *text, const char *pattern)
 {

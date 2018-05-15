@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 #include "util.h"
 
 // TODO: Refactor these!
@@ -14,20 +16,42 @@
 
 char *terminal_command = "i3-sensible-terminal -e";
 
-// TODO.
-#if 0
-void SaveDesktopEntriesInfoToCacheFile(const char *path_to_cache_file,
+int SaveDesktopEntriesInfoToCacheFile(const char *path_to_cache_file,
                                        DesktopEntry *entries_to_save,
                                        int entries_size)
 {
+    FILE *cacheFile = fopen(path_to_cache_file, "w+b");
+    if (!cacheFile)
+        return 0;
 
+    // TODO: handle errors properly!!!
+    int tmp = 0;
+
+    fwrite("MMCF", sizeof(char) * 4, 1, cacheFile);
+    fwrite(&tmp, sizeof(int), 1, cacheFile);
+    fwrite(&entries_size, sizeof(int), 1, cacheFile);
+
+    for (int i = 0; i < entries_size; ++i)
+    {
+        char *name = StringGetText(&entries_to_save[i].name);
+        size_t name_size = strlen(name);
+        char *exec = StringGetText(&entries_to_save[i].exec);
+        size_t exec_size = strlen(exec);
+
+        fwrite(&name_size, sizeof(size_t), 1, cacheFile);
+        fwrite(name, name_size, 1, cacheFile);
+        fwrite(&exec_size, sizeof(size_t), 1, cacheFile);
+        fwrite(exec, exec_size, 1, cacheFile);
+    }
+
+    fclose(cacheFile);
+    return 1;
 }
-#endif
 
 // TODO: Move to menu.c once it is cleaned up.
-static void LoadEntriesFromDotDesktop(const char *path,
-                                      DesktopEntry **result_desktop_entries,
-                                      int *result_desktop_entries_size)
+static int LoadEntriesFromDotDesktop(const char *path,
+                                     DesktopEntry **result_desktop_entries,
+                                     int *result_desktop_entries_size)
 {
     DIR *dir;
     struct dirent *ent;
@@ -51,7 +75,13 @@ static void LoadEntriesFromDotDesktop(const char *path,
                 const char *file_path = strcat(strcat(buffer, path), ent->d_name);
 
                 FILE *file = fopen(file_path, "r");
-                assert(file);
+
+                // TODO: Also handle as a branch. Continue?
+                if (!file)
+                {
+                    fprintf(stderr, "Bad file: %s\n", file_path);
+                    continue;
+                }
 
                 char *current_exec;
                 char *current_name;
@@ -212,6 +242,11 @@ static void LoadEntriesFromDotDesktop(const char *path,
         closedir(dir);
         free(line);
     }
+    else
+    {
+        fprintf(stderr, "Directory %s cannot be opened!!\n", path);
+        return 0;
+    }
 
 
     int CompareNameLex (const void * a, const void * b)
@@ -223,10 +258,8 @@ static void LoadEntriesFromDotDesktop(const char *path,
     // TODO: Do we need to sort?
     qsort(result, result_idx, sizeof(DesktopEntry), CompareNameLex);
 
-    for (int i = 0; i < result_idx; ++i)
-        AddEntry(StringGetText(&(result[i].name)),
-                 strlen(StringGetText(&(result[i].name))));
-
     (* result_desktop_entries) = result;
     (* result_desktop_entries_size) = result_idx;
+
+    return 1;
 }
