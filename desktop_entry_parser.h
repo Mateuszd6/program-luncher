@@ -9,4 +9,8 @@ typedef struct
     String exec;
 } DesktopEntry;
 
+int SaveDesktopEntriesInfoToCacheFile(const char *path_to_cache_file,
+                                      DesktopEntry *entries_to_save,
+                                      int entries_size);
+
 #endif // __DESKTOP_ENTRY_PARSER_H__

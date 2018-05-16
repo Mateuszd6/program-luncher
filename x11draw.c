@@ -1,5 +1,5 @@
-#include "util.h"
 #include "x11draw.h"
+#include "util.h"
 
 #define WINDOW_W (640)
 #define WINDOW_H (256)
@@ -21,10 +21,10 @@ static XColor selected_font_color;
 static Colormap color_map;
 
 // TODO: Add ability to specify colors by the user.
-static ColorData bg_color_data = {0x1e, 0x1f, 0x1c};
+static ColorData bg_color_data = {0x27, 0x28, 0x22}; // {0x1e, 0x1f, 0x1c};
 static ColorData lines_color_data = {0x02, 0x02, 0x02};
 static ColorData font_color_data = {0xCF, 0xCF, 0xCF};
-static ColorData selected_field_color_data = {0x47, 0x19, 0x8D};
+static ColorData selected_field_color_data = {0x14, 0x33, 0x66}; // {0x47, 0x19, 0x8D};
 static ColorData selected_font_color_data = {0xCF, 0xCF, 0xCF};
 
 // TODO: Drawing options?
@@ -183,8 +183,7 @@ void DrawAndKeyboardInit()
     AllocateXColorFromColorData(bg_color + 1, second_bg_color_data);
     AllocateXColorFromColorData(&font_color, font_color_data);
     AllocateXColorFromColorData(&lines_color, lines_color_data);
-    AllocateXColorFromColorData(&selected_field_color,
-                                selected_field_color_data);
+    AllocateXColorFromColorData(&selected_field_color, selected_field_color_data);
     AllocateXColorFromColorData(&selected_font_color, selected_font_color_data);
 
     // MY:
@@ -197,11 +196,13 @@ void DrawAndKeyboardInit()
     int scr = DefaultScreen(dpy);
     s = ScreenOfDisplay(dpy, scr);
 
-    w = XCreateWindow(
-        dpy, DefaultRootWindow(dpy), (WidthOfScreen(s) - WINDOW_W) / 2,
-        (HeightOfScreen(s) - WINDOW_H) / 2, WINDOW_W, WINDOW_H, 0,
-        DefaultDepth(dpy, scr), InputOutput, DefaultVisual(dpy, scr),
-        CWOverrideRedirect | CWBackPixmap | CWEventMask, &wa);
+    w = XCreateWindow(dpy, DefaultRootWindow(dpy),
+                      (WidthOfScreen(s) - WINDOW_W) / 2,
+                      -1, //(HeightOfScreen(s) - WINDOW_H) / 2,
+                      WINDOW_W, WINDOW_H, 0, DefaultDepth(dpy, scr),
+                      InputOutput, DefaultVisual(dpy, scr),
+                      CWOverrideRedirect | CWBackPixmap | CWEventMask, &wa);
+
     XClearWindow(dpy, w);
 
     XChangeWindowAttributes(dpy, w, 0, &wa);
@@ -224,8 +225,8 @@ void DrawAndKeyboardInit()
 
     // Calculate font-related stuff.
     XTextExtents(font, "Hello World!", sizeof("Hello World!"),
-                 &font_info.direction, &font_info.ascent,
-                 &font_info.descent, &font_info.overall);
+                 &font_info.direction, &font_info.ascent, &font_info.descent,
+                 &font_info.overall);
 
     fields_drawned =
         (int)(WINDOW_H / (font_info.ascent - font_info.descent + 10)) + 1;

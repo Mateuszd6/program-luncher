@@ -1,5 +1,6 @@
 #include <time.h>
 
+#include "desktop_entry_parser.h"
 #include "string.h"
 #include "util.h"
 
@@ -69,8 +70,8 @@ static void AddEntry(char *value, int length, EntriesBlock *last_entries_block)
         last_entries_block = block;
     }
 
-    Entry *new_entry = &(last_entries_block->entries[
-                             last_entries_block->number_of_entries++]);
+    Entry *new_entry =
+        &(last_entries_block->entries[last_entries_block->number_of_entries++]);
 
     new_entry->text = MakeStringCopyText(value, length);
     new_entry->next_displayed = NULL;
@@ -89,36 +90,38 @@ static void AddEntryToMatchList(Entry *current_entry,
         // Prefix match; Add to the list of fixes.
         case 2:
         {
-            if (* prefix_matched_tail)
-                (* prefix_matched_tail)->next_displayed = current_entry;
+            if (*prefix_matched_tail)
+                (*prefix_matched_tail)->next_displayed = current_entry;
             else
-                (* prefix_matched_head) = current_entry;
+                (*prefix_matched_head) = current_entry;
 
-            current_entry->prev_displayed = (* prefix_matched_tail);
+            current_entry->prev_displayed = (*prefix_matched_tail);
             current_entry->next_displayed = NULL;
-            (* prefix_matched_tail) = current_entry;
-        } break;
+            (*prefix_matched_tail) = current_entry;
+        }
+        break;
 
         // Weaker match. Append to the back.
         case 1:
         {
-            if (!(* non_full_matched_tail))
+            if (!(*non_full_matched_tail))
             {
-                assert(!( *non_full_matched_head));
-                (* non_full_matched_head) = current_entry;
-                (* non_full_matched_tail) = current_entry;
+                assert(!(*non_full_matched_head));
+                (*non_full_matched_head) = current_entry;
+                (*non_full_matched_tail) = current_entry;
                 current_entry->next_displayed = NULL;
                 current_entry->prev_displayed = NULL;
             }
             else
             {
-                assert(* non_full_matched_head);
-                (* non_full_matched_tail)->next_displayed = current_entry;
+                assert(*non_full_matched_head);
+                (*non_full_matched_tail)->next_displayed = current_entry;
                 current_entry->next_displayed = NULL;
-                current_entry->prev_displayed = (* non_full_matched_tail);
-                (* non_full_matched_tail) = current_entry;
+                current_entry->prev_displayed = (*non_full_matched_tail);
+                (*non_full_matched_tail) = current_entry;
             }
-        } break;
+        }
+        break;
 
         // No match; do nothing.
         case 0:
@@ -141,24 +144,18 @@ static void UpdateDisplayedEntries()
     Entry *first_with_not_full_match = NULL;
     Entry *last_with_not_full_match = NULL;
 
-    // TODO: BUG: type "el". After space + backspace it works ok, but after many
-    // spaces backspace throws the entries in wrong order!!! This probobly does
-    // have something to do with trailing spaces.
     do
     {
         for (int i = 0; i < current_block->number_of_entries; ++i)
         {
             Entry *current_entry = &(current_block->entries[i]);
 
-            AddEntryToMatchList(current_entry,
-                                &first_displayed_entry,
-                                &prev_entry,
-                                &first_with_not_full_match,
+            AddEntryToMatchList(current_entry, &first_displayed_entry,
+                                &prev_entry, &first_with_not_full_match,
                                 &last_with_not_full_match);
         }
         current_block = current_block->next;
-    }
-    while (current_block);
+    } while (current_block);
 
     if (prev_entry)
     {
@@ -197,9 +194,7 @@ static void UpdateDisplayedEntriesAfterAppendingCharacter()
         Entry *current_entry = next_entry_candidate;
         next_entry_candidate = next_entry_candidate->next_displayed;
 
-        AddEntryToMatchList(current_entry,
-                            &first_displayed_entry,
-                            &prev_entry,
+        AddEntryToMatchList(current_entry, &first_displayed_entry, &prev_entry,
                             &first_with_not_full_match,
                             &last_with_not_full_match);
     }
@@ -227,7 +222,7 @@ static void HandeOutput(const char *output)
     if (output[0] == '\0')
         return;
 
-    switch(menu_mode)
+    switch (menu_mode)
     {
         case MM_DMENU:
             printf("%s\n", output);
@@ -237,23 +232,41 @@ static void HandeOutput(const char *output)
         {
             // Iterate over desktop entries and find the matching one.
             for (int i = 0; i < desktop_entries_size; ++i)
-                if (strcmp(output, StringGetText(&desktop_entries[i].name)) == 0)
+                if (strcmp(output, StringGetText(&desktop_entries[i].name)) ==
+                    0)
                 {
                     // printf(StringGetText(&desktop_entries[i].exec));
                     // TODO: Calculate the length properly.
-                    char buffer[strlen(StringGetText(&desktop_entries[i].exec)) + strlen(" i3-msg exec ''")];
+                    char
+                        buffer[strlen(StringGetText(&desktop_entries[i].exec)) +
+                               strlen(" i3-msg exec ''")];
                     buffer[0] = '\0';
 
-                    // TODO: Add ability to specify command by the user (use % to
-                    // replace a command to call).
+                    // TODO: Add ability to specify command by the user (use %
+                    // to replace a command to call).
                     strcat(strcat(strcat(buffer, "i3-msg exec '"),
-                                  StringGetText(&desktop_entries[i].exec)), "'");
+                                  StringGetText(&desktop_entries[i].exec)),
+                           "'");
 
                     fprintf(stderr, "Buffer: %s\n", buffer);
                     system(buffer);
-                    break;
+                    return;
                 }
-        } break;
+
+            // If nothing was found, FOR NOW we just try to exec it.
+            // TODO: Clean up this super-bad code! this doenst have to be here
+            // TBH...
+            size_t inserted_text_len = strlen(inserted_text);
+            if (inserted_text_len)
+            {
+                char buffer[inserted_text_len + 3 + strlen("i3-msg ")];
+                buffer[0] = '\0';
+                strcat(strcat(buffer, "i3-msg "), inserted_text);
+
+                system(buffer);
+            }
+        }
+        break;
 
         default:
             assert(!"Not supported menu type!\n");
@@ -277,7 +290,7 @@ static void LoadEntriesFromStdin()
         // Remove the newline, and calculate the size
         int text_len = 0;
         for (int i = 0; line[i] != '\0'; ++i)
-            if (line[i] == '\n' && line[i+1] == '\0')
+            if (line[i] == '\n' && line[i + 1] == '\0')
             {
                 text_len = i;
                 line[i] = ('\0');
@@ -296,16 +309,17 @@ static int LoadEntriesFromDotDesktop(const char *path,
                                      int *result_desktop_entries_size);
 
 // TODO: Get rid of not needed asserts!
-static int LoadDotDesktopEntriesFromCacheFile(const char *path,
-                                              DesktopEntry **result_desktop_entries,
-                                              int *result_desktop_entries_size)
+static int
+LoadDotDesktopEntriesFromCacheFile(const char *path,
+                                   DesktopEntry **result_desktop_entries,
+                                   int *result_desktop_entries_size)
 {
     FILE *file = fopen(path, "r");
     if (file)
     {
         char title[5];
         assert(fread(title, sizeof(char) * 4, 1, file));
-        title[5] = '\0';
+        title[4] = '\0';
         if (strcmp(title, "MMCF") != 0)
             assert("Bad header!");
 
@@ -316,7 +330,8 @@ static int LoadDotDesktopEntriesFromCacheFile(const char *path,
 
         int number_of_entries;
         assert(fread(&number_of_entries, sizeof(int), 1, file));
-        (* result_desktop_entries) = malloc(sizeof(DesktopEntry) * number_of_entries);
+        (*result_desktop_entries) =
+            malloc(sizeof(DesktopEntry) * number_of_entries);
 
         int current_entry_idx = 0;
 
@@ -329,7 +344,7 @@ static int LoadDotDesktopEntriesFromCacheFile(const char *path,
                 assert(fread(buffer, sizeof(char) * len, 1, file));
                 buffer[len] = '\0';
 
-                (* result_desktop_entries)[current_entry_idx].name =
+                (*result_desktop_entries)[current_entry_idx].name =
                     MakeStringCopyText(buffer, len);
             }
             assert(fread(&len, sizeof(size_t), 1, file));
@@ -339,14 +354,14 @@ static int LoadDotDesktopEntriesFromCacheFile(const char *path,
                 assert(fread(buffer, sizeof(char) * len, 1, file));
                 buffer[len] = '\0';
 
-                (* result_desktop_entries)[current_entry_idx].exec =
+                (*result_desktop_entries)[current_entry_idx].exec =
                     MakeStringCopyText(buffer, len);
             }
 
             current_entry_idx++;
         }
 
-        (* result_desktop_entries_size) = number_of_entries;
+        (*result_desktop_entries_size) = number_of_entries;
         assert(current_entry_idx == number_of_entries);
 
         fclose(file);
@@ -376,63 +391,84 @@ void *CheckIfEntriesAreUpToDate(void *args)
     int result_desktop_entries_size;
 
     PQUERY_START_TIMER("");
-#if 1
     // TODO: dont assert, just handle this case!
     assert(LoadEntriesFromDotDesktop("/usr/share/applications/",
                                      &result_desktop_entries,
                                      &result_desktop_entries_size));
 
+#if 0
     SaveDesktopEntriesInfoToCacheFile("/home/mateusz/mmcache",
                                       result_desktop_entries,
                                       result_desktop_entries_size);
-#else
-    // TODO: dont assert, just handle this case!
-    LoadDotDesktopEntriesFromCacheFile("/home/mateusz/mmcache",
-                                       &result_desktop_entries,
-                                       &result_desktop_entries_size);
 #endif
     PQUERY_STOP_TIMER("Total load time:");
-
-    // TODO(Mateusz): This wont be done here!
-    for (int i = 0; i < result_desktop_entries_size; ++i)
-        AddEntry(StringGetText(&(result_desktop_entries[i].name)),
-                 strlen(StringGetText(&(result_desktop_entries[i].name))),
-                 last_block);
-
-    desktop_entries = result_desktop_entries;
-    desktop_entries_size = result_desktop_entries_size;
-
     return NULL;
 }
 
 static void MenuInit()
 {
-    switch(menu_mode)
+    switch (menu_mode)
     {
         case MM_DMENU:
+        {
             LoadEntriesFromStdin();
-            break;
+        } break;
 
         case MM_APP_LUNCHER:
-            // TODO: Load entries from the cache file.
+        {
+            DesktopEntry *result_desktop_entries = NULL;
+            int result_desktop_entries_size = 0;
 
-            // create a second thread which executes inc_x(&x)
-            if(pthread_create(&updateDesktopEntriesThread, NULL,
-                              CheckIfEntriesAreUpToDate, NULL)) {
+            // We load some entries from the cache file, and then check if
+            // cached data is up to date with the original desktop file foleder.
 
-                fprintf(stderr, "Error creating thread\n");
+            // TODO: or check if cache file exists, and if it doesnt just do
+            // something else.
+            if (LoadDotDesktopEntriesFromCacheFile(
+                    "/home/mateusz/mmcache", &result_desktop_entries,
+                    &result_desktop_entries_size))
+            {
+                // Create a second thread which updates the data, checks if
+                // there are some differences and if so swaps datas, and save
+                // new one to the cache file.
+                if (pthread_create(&updateDesktopEntriesThread, NULL,
+                                   CheckIfEntriesAreUpToDate, NULL))
+                {
+                    fprintf(stderr, "Error creating thread\n");
+                }
+            }
+            else
+            {
+                // TODO: dont assert, just handle this case!
+                // TODO: Does it have to be "/usr/share/applications/"?
+                assert(LoadEntriesFromDotDesktop("/usr/share/applications/",
+                                                 &result_desktop_entries,
+                                                 &result_desktop_entries_size));
+
+                // TODO: Add ability for the user, not to create cache file,
+                // also add ability to specify the path to it!
+                SaveDesktopEntriesInfoToCacheFile("/home/mateusz/mmcache",
+                                                  result_desktop_entries,
+                                                  result_desktop_entries_size);
             }
 
-            // TODO: Dont clear join it here, let the secodn thread run in the
-            // background.
-            pthread_join(updateDesktopEntriesThread, NULL);
-            break;
+            // Add created list to the display list.
+            for (int i = 0; i < result_desktop_entries_size; ++i)
+            {
+                AddEntry(
+                    StringGetText(&(result_desktop_entries[i].name)),
+                    strlen(StringGetText(&(result_desktop_entries[i].name))),
+                    last_block);
+            }
+
+            desktop_entries = result_desktop_entries;
+            desktop_entries_size = result_desktop_entries_size;
+        }
+        break;
 
         default:
             assert(!"Not supported menu type!\n");
     }
-
-
 }
 
 // TODO: Specify how much? (more that one line which is current limitation)!
@@ -475,9 +511,7 @@ static UpdateMenuFeedback MenuMoveUp()
         assert(current_select_offset > 0 || current_select_idx > 0);
 
         current_select = current_select->prev_displayed;
-        current_select_idx > 0
-            ? current_select_idx--
-            : current_select_offset--;
+        current_select_idx > 0 ? current_select_idx-- : current_select_offset--;
 
         return UMF_REDRAW;
     }
@@ -497,7 +531,7 @@ static UpdateMenuFeedback MenuMoveDown(int number_of_fields_drawned)
         // First -1 because one field holds inserted
         // text. Second -1 is because we want some space, and
         // the last field might be cuted.
-        while (current_select_idx >= number_of_fields_drawned -1 -1)
+        while (current_select_idx >= number_of_fields_drawned - 1 - 1)
         {
             current_select_offset++;
             current_select_idx--;

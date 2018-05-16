@@ -1,7 +1,4 @@
-// TODO: Investigate how does X want us to redraw the window, because redrawing
-// it manually makes it weird and sometimes ignores what we just copied into GC.
-
-// TODO: Refactor stderr printfs
+// TODO: Refactor stderr printfs. TO WHAT?
 #include <assert.h>
 #include <dirent.h>
 #include <stdio.h>
@@ -13,15 +10,12 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
-// TODO: I get an implicite declaration here, so i have to define it manually.
-int getline(char **lineptr, size_t *n, FILE *stream);
+// NOTE: If c11 is used instead of gnu11 nanosleep and getline with some random
+// reason are not defined. So implicite declaration warrnings are thrown!
 
-// TODO: ^Same here.
-int nanosleep(const struct timespec *req, struct timespec *rem);
-
-#include "util.h"
-#include "string.h"
 #include "desktop_entry_parser.h"
+#include "string.h"
+#include "util.h"
 #include "x11draw.h"
 
 // TODO: Menu settings.
@@ -37,11 +31,11 @@ typedef enum
 // This is the default mode.
 static MenuMode menu_mode = MM_APP_LUNCHER;
 
-#include "menu.c"
-#include "x11draw.c"
 #include "desktop_entry_parser.c"
+#include "menu.c"
 #include "string.c"
 #include "util.c"
+#include "x11draw.c"
 
 static void RedrawWindow()
 {
@@ -58,15 +52,8 @@ static void RedrawWindow()
     while (current_entry)
     {
         char *entry_value = StringGetText(&current_entry->text);
-
         int finished =
-#if 1
-        DrawEntry(entry_value, entry_idx,
-                  current_entry == current_select);
-#else
-        DrawEntry("Here is some text", entry_idx,
-                  current_entry == current_select);
-#endif
+            DrawEntry(entry_value, entry_idx, current_entry == current_select);
 
         current_entry = current_entry->next_displayed;
         entry_idx++;
@@ -79,8 +66,7 @@ static void RedrawWindow()
 
 #if 1
     if (current_select)
-        fprintf(stderr,
-                "CURRENT SELECTED OPTION TO COMPLETE: %s\n",
+        fprintf(stderr, "CURRENT SELECTED OPTION TO COMPLETE: %s\n",
                 StringGetText(&current_select->text));
     else
         fprintf(stderr, "NO COMPLETION AVAILABLE!\n");
@@ -132,7 +118,6 @@ static void EventLoop()
                     update_feedback = MenuMoveUp();
                     break;
 
-                // TODO: Move to menu.c
                 case XK_Return:
                 {
                     if (current_select)
@@ -145,12 +130,13 @@ static void EventLoop()
 
                 default:
                 {
-                    // TODO: Drawable characters!!!!
+                    // TODO: Another characters support?
                     if (32 <= string[0] && string[0] <= 126)
                     {
                         update_feedback = MenuAddCharacter(string[0]);
                     }
-                } break;
+                }
+                break;
             }
 
             redraw = update_feedback & UMF_REDRAW;
@@ -172,8 +158,7 @@ static void EventLoop()
                 RedrawWindow();
                 fprintf(stderr,
                         "CURRENT_SELECT_OFFSET: %d\nCURRENT_SELECT_IDX: %d\n",
-                        current_select_offset,
-                        current_select_idx);
+                        current_select_offset, current_select_idx);
             }
         }
 
@@ -187,9 +172,7 @@ static void EventLoop()
 static int ParseColor(const char *color, ColorData *res_data)
 {
     if (color[0] != '#' || strlen(color) != 7)
-    {
         return 0;
-    }
 
     unsigned char result[3];
     for (int i = 0; i < 3; ++i)
@@ -197,7 +180,7 @@ static int ParseColor(const char *color, ColorData *res_data)
         int value[2];
         for (int j = 0; j < 2; ++j)
         {
-            char character = color[1 + 2*i + j];
+            unsigned char character = color[1 + 2 * i + j];
 
             // If not in rage 0-9 and (after ToLower) not in rage a-f.
             if (character < '0' || character > '9')
@@ -205,7 +188,7 @@ static int ParseColor(const char *color, ColorData *res_data)
                 if (ToLower(character) < 'a' || ToLower(character) > 'f')
                     return 0;
                 else
-                    value[j] = character - 'a' + 10;
+                    value[j] = ToLower(character) - 'a' + 10;
             }
             else
                 value[j] = character - '0';
@@ -214,11 +197,12 @@ static int ParseColor(const char *color, ColorData *res_data)
         result[i] = value[0] * 16 + value[1];
     }
 
-    (* res_data) = (ColorData) { result[0], result[1], result[2] };
+    // --sb \#47198D <- With this arg.
+    // #47198D       <- This should come up.
+    (*res_data) = (ColorData){result[0], result[1], result[2]};
     return 1;
 }
 
-// TODO: Add ability to specify 'dmenu-mode' and then read from stdin!
 int main(int argc, char **argv)
 {
     void GetCurrentArgAsColorAndAssingIt(const int arg_idx, const int arg_count,
@@ -240,13 +224,17 @@ int main(int argc, char **argv)
         }
     }
 
-    // TODO: This is a placeholder for the real argument parser.
     for (int i = 1; i < argc; ++i)
     {
+        // Select the mode for the menu:
         if (strcmp(argv[i], "--dmenu") == 0)
             menu_mode = MM_DMENU;
         else if (strcmp(argv[i], "--app-luncher") == 0)
             menu_mode = MM_APP_LUNCHER;
+
+        // Some graphical options:
+        else if (strcmp(argv[i], "--no-lines") == 0)
+            draw_lines = 0;
         else if (strcmp(argv[i], "-nb") == 0 || strcmp(argv[i], "--nb") == 0)
         {
             ++i;
@@ -260,13 +248,15 @@ int main(int argc, char **argv)
         else if (strcmp(argv[i], "-sb") == 0 || strcmp(argv[i], "--sb") == 0)
         {
             ++i;
-            GetCurrentArgAsColorAndAssingIt(i, argc, &selected_field_color_data);
+            GetCurrentArgAsColorAndAssingIt(i, argc,
+                                            &selected_field_color_data);
         }
         else if (strcmp(argv[i], "-sf") == 0 || strcmp(argv[i], "--sf") == 0)
         {
             ++i;
             GetCurrentArgAsColorAndAssingIt(i, argc, &selected_font_color_data);
         }
+
         else
         {
             fprintf(stderr, "No idea what does arg %s mean!\n", argv[i]);
@@ -281,11 +271,6 @@ int main(int argc, char **argv)
     MenuInit();
 
     inserted_text[0] = '\0';
-
-    // TODO: Add option to sort entrues Lexicographically? Move it to dmenu mode
-    // start if any.
-
-    // qsort(entries, number_of_entries, sizeof(char *), LexicographicalCompare);
 
     DrawAndKeyboardInit();
     UpdateDisplayedEntries();

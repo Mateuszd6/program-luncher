@@ -28,26 +28,28 @@ static inline int PrefixMatch(const char *text, const char *pattern)
         if (pattern[i] == '\0')
             return 1;
 
-        if (text[i] == '\0' || (case_sensitive ? text[i] != pattern[i] :
-                                ToLower(text[i]) != ToLower(pattern[i])))
+        if (text[i] == '\0' ||
+            (case_sensitive ? text[i] != pattern[i]
+                            : ToLower(text[i]) != ToLower(pattern[i])))
             return 0;
     }
 }
 
 // Is [pattern] a prefix of [text]?
-static inline int PrefixMatchWithTrimmedPattern(const char *text, const char *pattern)
+static inline int PrefixMatchWithTrimmedPattern(const char *text,
+                                                const char *pattern)
 {
 #if 0
     printf("\tDoin prefix match: %s, %s\n", text, pattern);
 #endif
-    while (* pattern == ' ')
+    while (*pattern == ' ')
         pattern++;
 
     const char *end = pattern;
-    while (* end != '\0')
+    while (*end != '\0')
         end++;
 
-    while (end != pattern && * (end - 1) == ' ')
+    while (end != pattern && *(end - 1) == ' ')
         end--;
 
     for (int i = 0;; ++i)
@@ -55,8 +57,9 @@ static inline int PrefixMatchWithTrimmedPattern(const char *text, const char *pa
         if (&pattern[i] == end)
             return 1;
 
-        if (text[i] == '\0' || (case_sensitive ? text[i] != pattern[i] :
-                                ToLower(text[i]) != ToLower(pattern[i])))
+        if (text[i] == '\0' ||
+            (case_sensitive ? text[i] != pattern[i]
+                            : ToLower(text[i]) != ToLower(pattern[i])))
             return 0;
     }
 }
@@ -77,10 +80,10 @@ static inline int SuffixMatch(const char *text, const char *pattern)
 
     for (int i = 0; i < pattern_len; ++i)
     {
-        assert(text[text_len-pattern_len+i] != '\0');
-        if ((case_sensitive
-             ? text[text_len-pattern_len+i] != pattern[i]
-             : ToLower(text[text_len-pattern_len+i]) != ToLower(pattern[i])))
+        assert(text[text_len - pattern_len + i] != '\0');
+        if ((case_sensitive ? text[text_len - pattern_len + i] != pattern[i]
+                            : ToLower(text[text_len - pattern_len + i]) !=
+                                  ToLower(pattern[i])))
         {
             return 0;
         }
@@ -104,12 +107,11 @@ static inline int TextMatch(const char *text, const char *pattern)
     char buffer[strlen(pattern) + 1];
     const char *previous = pattern;
     const char *current;
-    for (current = pattern;;
-         current++)
+    for (current = pattern;; current++)
     {
-        if ((* current) == ' ' || (* current) == '\0')
+        if ((*current) == ' ' || (*current) == '\0')
         {
-            size_t len = current-previous;
+            size_t len = current - previous;
             strncpy(buffer, previous, len);
             buffer[len] = '\0';
             int match = PatternMatchBruteForce(text, buffer);
@@ -122,7 +124,7 @@ static inline int TextMatch(const char *text, const char *pattern)
             if (!match)
                 return 0;
 
-            if ((* current) == '\0')
+            if ((*current) == '\0')
                 break;
 
             previous = current + 1;
@@ -135,6 +137,9 @@ static inline int TextMatch(const char *text, const char *pattern)
 static char *DuplicateString(const char *s)
 {
     char *p = malloc(strlen(s) + 1);
-    if(p) { strcpy(p, s); }
+    if (p)
+    {
+        strcpy(p, s);
+    }
     return p;
 }

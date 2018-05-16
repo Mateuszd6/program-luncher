@@ -17,8 +17,8 @@
 char *terminal_command = "i3-sensible-terminal -e";
 
 int SaveDesktopEntriesInfoToCacheFile(const char *path_to_cache_file,
-                                       DesktopEntry *entries_to_save,
-                                       int entries_size)
+                                      DesktopEntry *entries_to_save,
+                                      int entries_size)
 {
     FILE *cacheFile = fopen(path_to_cache_file, "w+b");
     if (!cacheFile)
@@ -57,8 +57,7 @@ static int LoadEntriesFromDotDesktop(const char *path,
     struct dirent *ent;
     char buffer[256];
 
-    int result_idx = 0,
-        result_max_len = 64;
+    int result_idx = 0, result_max_len = 64;
     DesktopEntry *result = malloc(sizeof(DesktopEntry) * result_max_len);
 
     if ((dir = opendir(path)) != NULL)
@@ -68,11 +67,12 @@ static int LoadEntriesFromDotDesktop(const char *path,
         int nread;
 
         // print all the files and directories within directory
-        while ((ent = readdir (dir)) != NULL)
+        while ((ent = readdir(dir)) != NULL)
             if (SuffixMatch(ent->d_name, ".desktop"))
             {
                 buffer[0] = '\0';
-                const char *file_path = strcat(strcat(buffer, path), ent->d_name);
+                const char *file_path =
+                    strcat(strcat(buffer, path), ent->d_name);
 
                 FILE *file = fopen(file_path, "r");
 
@@ -83,14 +83,14 @@ static int LoadEntriesFromDotDesktop(const char *path,
                     continue;
                 }
 
-                char *current_exec;
-                char *current_name;
+                char *current_exec = NULL;
+                char *current_name = NULL;
 
                 StringMakeEmpty();
                 StringMakeEmpty();
 
                 int terminal = 0; // Is app using terminal or not (TODO: tricky)
-                int header_checked = 0; // There is [DesktopEntry] header.
+                int header_checked = 0;    // There is [DesktopEntry] header.
                 int ignore_this_entry = 0; // e.g. entry is not an application.
 
                 while ((nread = getline(&line, &len, file)) != -1)
@@ -108,7 +108,8 @@ static int LoadEntriesFromDotDesktop(const char *path,
                             do
                             {
                                 nread = getline(&line, &len, file);
-                            } while (nread != -1 && strcmp(line, "[Desktop Entry]\n") != 0);
+                            } while (nread != -1 &&
+                                     strcmp(line, "[Desktop Entry]\n") != 0);
 
                             if (nread == -1)
                                 break;
@@ -123,46 +124,55 @@ static int LoadEntriesFromDotDesktop(const char *path,
                         continue;
                     }
 
-                    if (strlen(line) > DESKTOP_TYPE_FIELD_SIZE
-                        && strncmp(line, DESKTOP_TYPE_FIELD, DESKTOP_TYPE_FIELD_SIZE) == 0
-                        && strcmp(line + DESKTOP_TYPE_FIELD_SIZE, "Application\n") != 0)
+                    if (strlen(line) > DESKTOP_TYPE_FIELD_SIZE &&
+                        strncmp(line, DESKTOP_TYPE_FIELD,
+                                DESKTOP_TYPE_FIELD_SIZE) == 0 &&
+                        strcmp(line + DESKTOP_TYPE_FIELD_SIZE,
+                               "Application\n") != 0)
                     {
                         ignore_this_entry = 1;
                         break;
                     }
-                    else if (strlen(line) > DESKTOP_NAME_FIELD_SIZE
-                             && strncmp(line, DESKTOP_NAME_FIELD, DESKTOP_NAME_FIELD_SIZE) == 0)
+                    else if (strlen(line) > DESKTOP_NAME_FIELD_SIZE &&
+                             strncmp(line, DESKTOP_NAME_FIELD,
+                                     DESKTOP_NAME_FIELD_SIZE) == 0)
                     {
                         char *name = line + DESKTOP_NAME_FIELD_SIZE;
                         if (name)
                             current_name = DuplicateString(name);
                     }
-                    else if (strlen(line) > DESKTOP_EXEC_FIELD_SIZE
-                             && strncmp(line, DESKTOP_EXEC_FIELD, DESKTOP_EXEC_FIELD_SIZE) == 0)
+                    else if (strlen(line) > DESKTOP_EXEC_FIELD_SIZE &&
+                             strncmp(line, DESKTOP_EXEC_FIELD,
+                                     DESKTOP_EXEC_FIELD_SIZE) == 0)
                     {
                         char *exec = line + DESKTOP_EXEC_FIELD_SIZE;
                         if (exec)
                             current_exec = DuplicateString(exec);
                     }
-                    else if (strlen(line) > DESKTOP_TERM_FIELD_SIZE
-                             && strncmp(line, DESKTOP_TERM_FIELD, DESKTOP_TERM_FIELD_SIZE) == 0)
+                    else if (strlen(line) > DESKTOP_TERM_FIELD_SIZE &&
+                             strncmp(line, DESKTOP_TERM_FIELD,
+                                     DESKTOP_TERM_FIELD_SIZE) == 0)
                     {
                         char *term = line + DESKTOP_TERM_FIELD_SIZE;
-                        if (strcmp(term, "true\n") == 0 || strcmp(term, "true") == 0)
+                        if (strcmp(term, "true\n") == 0 ||
+                            strcmp(term, "true") == 0)
                             terminal = 1;
                     }
-                    else if (strlen(line) > DESKTOP_NO_DISPLAY_FIELD_SIZE
-                             && strncmp(line, DESKTOP_NO_DISPLAY_FIELD, DESKTOP_NO_DISPLAY_FIELD_SIZE) == 0)
+                    else if (strlen(line) > DESKTOP_NO_DISPLAY_FIELD_SIZE &&
+                             strncmp(line, DESKTOP_NO_DISPLAY_FIELD,
+                                     DESKTOP_NO_DISPLAY_FIELD_SIZE) == 0)
                     {
-                        char *display_info = line + DESKTOP_NO_DISPLAY_FIELD_SIZE;
-                        if (display_info
-                            && (strcmp(display_info, "true\n") == 0
-                                || strcmp(display_info, "true") == 0))
+                        char *display_info =
+                            line + DESKTOP_NO_DISPLAY_FIELD_SIZE;
+                        if (display_info &&
+                            (strcmp(display_info, "true\n") == 0 ||
+                             strcmp(display_info, "true") == 0))
                             ignore_this_entry = 1;
                     }
                 }
 
-                if (header_checked && !ignore_this_entry && current_name && current_exec)
+                if (header_checked && !ignore_this_entry && current_name &&
+                    current_exec)
                 {
                     if (terminal)
                     {
@@ -170,20 +180,25 @@ static int LoadEntriesFromDotDesktop(const char *path,
                             exec_original_size = strlen(current_exec);
 
                         // NOTE: '+1 +1' - 1 for space, 1 for trailing '\0'
-                        int fixed_exec_command_size = exec_original_size +
-                            termnial_command_size + 1 + 1;
+                        int fixed_exec_command_size =
+                            exec_original_size + termnial_command_size + 1 + 1;
 
-                        current_exec = realloc(current_exec, sizeof(char) * fixed_exec_command_size);
+                        current_exec =
+                            realloc(current_exec,
+                                    sizeof(char) * fixed_exec_command_size);
                         assert(current_exec);
 
-                        // TODO: See if memcpy optimizes this (probobly not worth it).
+                        // TODO: See if memcpy optimizes this (probobly not
+                        // worth it).
                         for (int i = 0; i < exec_original_size; ++i)
-                            current_exec[i + termnial_command_size+1] = current_exec[i];
+                            current_exec[i + termnial_command_size + 1] =
+                                current_exec[i];
                         for (int i = 0; i < termnial_command_size; ++i)
                             current_exec[i] = terminal_command[i];
 
                         current_exec[termnial_command_size] = ' ';
-                        current_exec[exec_original_size + termnial_command_size + 1] = '\0';
+                        current_exec[exec_original_size +
+                                     termnial_command_size + 1] = '\0';
                     }
 
                     // Remove %'s:
@@ -192,9 +207,9 @@ static int LoadEntriesFromDotDesktop(const char *path,
                          current_exec[i] != '\0' && current_exec[i] != '\n';
                          ++i)
                     {
-                        if (current_exec[i] == '%'
-                            && current_exec[i+1] != '\0'
-                            && current_exec[i+1] != '\n')
+                        if (current_exec[i] == '%' &&
+                            current_exec[i + 1] != '\0' &&
+                            current_exec[i + 1] != '\n')
                         {
                             i += 2;
                         }
@@ -222,13 +237,14 @@ static int LoadEntriesFromDotDesktop(const char *path,
                     if (result_idx >= result_max_len)
                     {
                         result_max_len *= 2;
-                        result = realloc(result, sizeof(DesktopEntry) * result_max_len);
+                        result = realloc(result,
+                                         sizeof(DesktopEntry) * result_max_len);
                     }
 
                     // TODO: Make a copy!
-                    result[result_idx++] = (DesktopEntry) {
+                    result[result_idx++] = (DesktopEntry){
                         MakeStringCopyText(current_name, strlen(current_name)),
-                        MakeStringCopyText(current_exec, strlen(current_exec)) };
+                        MakeStringCopyText(current_exec, strlen(current_exec))};
                 }
 
                 if (current_name)
@@ -248,8 +264,7 @@ static int LoadEntriesFromDotDesktop(const char *path,
         return 0;
     }
 
-
-    int CompareNameLex (const void * a, const void * b)
+    int CompareNameLex(const void *a, const void *b)
     {
         return strcmp((StringGetText(&((DesktopEntry *)a)->name)),
                       (StringGetText(&((DesktopEntry *)b)->name)));
@@ -258,8 +273,8 @@ static int LoadEntriesFromDotDesktop(const char *path,
     // TODO: Do we need to sort?
     qsort(result, result_idx, sizeof(DesktopEntry), CompareNameLex);
 
-    (* result_desktop_entries) = result;
-    (* result_desktop_entries_size) = result_idx;
+    (*result_desktop_entries) = result;
+    (*result_desktop_entries_size) = result_idx;
 
     return 1;
 }
