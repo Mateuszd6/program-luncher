@@ -31,6 +31,10 @@ static inline char ToLower(const char c);
 
 static inline int PrefixMatch(const char *text, const char *pattern);
 
+static inline int PrefixMatchOfLengthN(const char *text,
+                                       const char *pattern,
+                                       const int length);
+
 static inline int PrefixMatchWithTrimmedPattern(const char *text, const char *pattern);
 
 static inline int SuffixMatch(const char *text, const char *pattern);

@@ -16,6 +16,25 @@ static inline char ToLower(const char c)
     return c;
 }
 
+static inline int PrefixMatchOfLengthN(const char *text,
+                                       const char *pattern,
+                                       const int length)
+{
+    for (int i = 0; i < length; ++i)
+    {
+        if (pattern[i] == '\0')
+            return 1;
+
+        if (text[i] == '\0' ||
+            (case_sensitive
+             ? text[i] != pattern[i]
+             : ToLower(text[i]) != ToLower(pattern[i])))
+            return 0;
+    }
+
+    return 1;
+}
+
 // Is [pattern] a prefix of [text]?
 static inline int PrefixMatch(const char *text, const char *pattern)
 {

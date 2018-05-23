@@ -14,7 +14,18 @@
 #define DESKTOP_NO_DISPLAY_FIELD "NoDisplay="
 #define DESKTOP_NO_DISPLAY_FIELD_SIZE (10)
 
-char *terminal_command = "i3-sensible-terminal -e";
+static int blacklisted_entries_number = 0;
+static int blacklisted_entries_capacity = 0;
+
+static int extra_entries_number = 0;
+static int extra_entries_capacity = 0;
+
+static char **blacklisted_entries;
+
+static char **extra_entries_names;
+static char **extra_entries_execs;
+
+static char *terminal_command = "i3-sensible-terminal -e";
 
 int SaveDesktopEntriesInfoToCacheFile(const char *path_to_cache_file,
                                       DesktopEntry *entries_to_save,
@@ -65,6 +76,26 @@ static int LoadEntriesFromDotDesktop(const char *path,
         size_t len = 256;
         char *line = malloc(sizeof(char) * len);
         int nread;
+
+#if 0
+        result[result_idx++] = (DesktopEntry){
+            MakeStringCopyText("SSH MIM", strlen("SSH MIM")),
+            MakeStringCopyText(
+                "gnome-terminal -- ssh md394171@students.mimuw.edu.pl",
+                strlen("gnome-terminal -- ssh md394171@students.mimuw.edu.pl"))};
+#endif
+        // TODO: Add abilitty to blacklist these.
+        for (int i = 0; i < extra_entries_number; ++i)
+        {
+            fprintf(stderr,
+                    "Adding desktop entry: %s -> %s specified in the program arguments.\n",
+                    extra_entries_names[i], extra_entries_execs[i]);
+
+            result[result_idx++] = (DesktopEntry){
+                MakeStringCopyText(extra_entries_names[i], strlen(extra_entries_names[i])),
+                MakeStringCopyText(extra_entries_execs[i], strlen(extra_entries_execs[i]))
+            };
+        }
 
         // print all the files and directories within directory
         while ((ent = readdir(dir)) != NULL)
@@ -138,6 +169,18 @@ static int LoadEntriesFromDotDesktop(const char *path,
                                      DESKTOP_NAME_FIELD_SIZE) == 0)
                     {
                         char *name = line + DESKTOP_NAME_FIELD_SIZE;
+
+                        for (int i = 0; i < blacklisted_entries_number; ++i)
+                            if (PrefixMatchOfLengthN(name,
+                                                     blacklisted_entries[i],
+                                                     strlen(name)))
+                            {
+                                fprintf(stderr, "Ignoring desktop entry: %s, because it \
+is on the blacklist.\n", name);
+                                ignore_this_entry = 1;
+                                break;
+                            }
+
                         if (name)
                             current_name = DuplicateString(name);
                     }
@@ -241,7 +284,7 @@ static int LoadEntriesFromDotDesktop(const char *path,
                                          sizeof(DesktopEntry) * result_max_len);
                     }
 
-                    // TODO: Make a copy!
+                    // TODO: Copy pasted.
                     result[result_idx++] = (DesktopEntry){
                         MakeStringCopyText(current_name, strlen(current_name)),
                         MakeStringCopyText(current_exec, strlen(current_exec))};
@@ -270,7 +313,6 @@ static int LoadEntriesFromDotDesktop(const char *path,
                       (StringGetText(&((DesktopEntry *)b)->name)));
     }
 
-    // TODO: Do we need to sort?
     qsort(result, result_idx, sizeof(DesktopEntry), CompareNameLex);
 
     (*result_desktop_entries) = result;

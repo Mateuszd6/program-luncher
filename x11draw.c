@@ -14,6 +14,7 @@ static GC gc;
 
 static XColor bg_color[2];
 static XColor font_color;
+static XColor shaded_font_color;
 static XColor lines_color;
 static XColor selected_field_color;
 static XColor selected_font_color;
@@ -26,6 +27,8 @@ static ColorData lines_color_data = {0x02, 0x02, 0x02};
 static ColorData font_color_data = {0xCF, 0xCF, 0xCF};
 static ColorData selected_field_color_data = {0x14, 0x33, 0x66}; // {0x47, 0x19, 0x8D};
 static ColorData selected_font_color_data = {0xCF, 0xCF, 0xCF};
+
+int prompt_len = 0;
 
 // TODO: Drawing options?
 static int draw_lines = 1;
@@ -126,6 +129,13 @@ void DrawMarginLines()
         XFillRectangle(dpy, w, gc, WINDOW_W - 1, 0, WINDOW_W, WINDOW_H);
         XFillRectangle(dpy, w, gc, 0, WINDOW_H - 1, WINDOW_W, WINDOW_H);
 
+        // TODO: If displaying prompt:
+        // TODO: INVESTIGATE WHY THE FIRST LINE IS HIGHTER THAN THE REST AND BY
+        // HOW MUCH IT IS!!
+        if (prompt_len)
+            XFillRectangle(dpy, w, gc, prompt_len, 0, 1,
+                           (font_info.ascent - font_info.descent + 13));
+
         for (int i = 0; i < fields_drawned; ++i)
             XFillRectangle(
                 dpy, w, gc, 0,
@@ -134,10 +144,39 @@ void DrawMarginLines()
     }
 }
 
-void DrawInertedText(const char *text)
+void DrawInertedTextAndPrompt(const char *text)
 {
+    int ascend, descend, direction;
+    XCharStruct overall;
+
+    if (prompt_len)
+    {
+        XSetForeground(dpy, gc, selected_field_color.pixel);
+        XTextExtents(font, prompt, GetLettersCount(prompt),
+                     &direction, &ascend, &descend, &overall);
+        XFillRectangle(dpy, w, gc,
+                       0, 0, prompt_len, // Make some offset from the both sides!
+                       font_info.ascent - font_info.descent + 13);
+
+        XSetForeground(dpy, gc, selected_font_color.pixel);
+        XDrawString(dpy, w, gc, OFFSET_X, OFFSET_Y, prompt, GetLettersCount(prompt));
+    }
+
     XSetForeground(dpy, gc, font_color.pixel);
-    XDrawString(dpy, w, gc, OFFSET_X, OFFSET_Y, text, GetLettersCount(text));
+    XTextExtents(font, text, GetLettersCount(text),
+                 &direction, &ascend, &descend, &overall);
+
+    XDrawString(dpy, w, gc, prompt_len + OFFSET_X, OFFSET_Y,
+                text, GetLettersCount(text));
+
+    // Draw cursor:
+    // TODO: There are some numbers that wont change with a window, so work on
+    // it for a while!
+    XSetForeground(dpy, gc, shaded_font_color.pixel);
+    XFillRectangle(dpy, w, gc,
+                   prompt_len + OFFSET_X + overall.width + 2,
+                   OFFSET_Y - (ascend - descend + 3),
+                   2, ascend - descend + 6);
 }
 
 // Return 1 if there is no space for another entry
@@ -174,14 +213,18 @@ void DrawAndKeyboardInit()
     // Initialize color map.
     color_map = XDefaultColormap(dpy, 0);
 
-    // Compute the second BG color from the first one.
-    ColorData second_bg_color_data = {MAX(bg_color_data.red - 0x08, 0),
-                                      MAX(bg_color_data.green - 0x08, 0),
-                                      MAX(bg_color_data.blue - 0x08, 0)};
-
     AllocateXColorFromColorData(bg_color, bg_color_data);
-    AllocateXColorFromColorData(bg_color + 1, second_bg_color_data);
+    // Compute the second BG color from the first one.
+    AllocateXColorFromColorData(bg_color + 1,
+                                (ColorData){MAX(bg_color_data.red - 0x08, 0),
+                                      MAX(bg_color_data.green - 0x08, 0),
+                                      MAX(bg_color_data.blue - 0x08, 0)});
     AllocateXColorFromColorData(&font_color, font_color_data);
+    // Do similar computation for the color of the cursor.
+    AllocateXColorFromColorData(&shaded_font_color,
+                                (ColorData){MAX(font_color_data.red - 0x10, 0),
+                                        MAX(font_color_data.green - 0x10, 0),
+                                        MAX(font_color_data.blue - 0x10, 0)});
     AllocateXColorFromColorData(&lines_color, lines_color_data);
     AllocateXColorFromColorData(&selected_field_color, selected_field_color_data);
     AllocateXColorFromColorData(&selected_font_color, selected_font_color_data);
@@ -224,11 +267,25 @@ void DrawAndKeyboardInit()
     SetUpFont();
 
     // Calculate font-related stuff.
-    XTextExtents(font, "Hello World!", sizeof("Hello World!"),
+    XTextExtents(font, "Heljo World!", sizeof("Heljo World!"),
                  &font_info.direction, &font_info.ascent, &font_info.descent,
                  &font_info.overall);
 
     fields_drawned =
         (int)(WINDOW_H / (font_info.ascent - font_info.descent + 10)) + 1;
+
+    if (prompt[0] != '\0')
+    {
+        XCharStruct prompt_overall;
+        int ascend, descend, direction;
+
+        XTextExtents(font, prompt, GetLettersCount(prompt),
+                     &direction, &ascend, &descend, &prompt_overall);
+        prompt_len = prompt_overall.width + 2*OFFSET_X;
+    }
+    else
+        prompt_len = 0;
+
+    // TODO: DO we need flush here?
     XFlush(dpy);
 }

@@ -6,11 +6,12 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 
-// NOTE: If c11 is used instead of gnu11 nanosleep and getline with some random
+// TODO: If c11 is used instead of gnu11 nanosleep and getline with some random
 // reason are not defined. So implicite declaration warrnings are thrown!
 
 #include "desktop_entry_parser.h"
@@ -37,6 +38,7 @@ static MenuMode menu_mode = MM_APP_LUNCHER;
 #include "util.c"
 #include "x11draw.c"
 
+// TODO: Move it to draw file...!
 static void RedrawWindow()
 {
     DrawBackground();
@@ -47,7 +49,7 @@ static void RedrawWindow()
     for (int i = 0; i < current_select_offset; ++i)
         current_entry = current_entry->next_displayed;
 
-    DrawInertedText(inserted_text);
+    DrawInertedTextAndPrompt(inserted_text);
 
     while (current_entry)
     {
@@ -64,7 +66,7 @@ static void RedrawWindow()
 
     DrawMarginLines();
 
-#if 1
+#if 0
     if (current_select)
         fprintf(stderr, "CURRENT SELECTED OPTION TO COMPLETE: %s\n",
                 StringGetText(&current_select->text));
@@ -81,6 +83,10 @@ static void EventLoop()
     {
         int key_press = 0;
 
+        int redraw = 0;
+        int reset_select = 0;
+        int reset_append = 0;
+
         XEvent e;
         XNextEvent(dpy, &e);
         if (e.type == KeyPress)
@@ -89,9 +95,6 @@ static void EventLoop()
             char string[25];
             // int len;
             KeySym keysym;
-            int redraw = 0;
-            int reset_select = 0;
-            int reset_append = 0;
 
             UpdateMenuFeedback update_feedback = UMF_NONE;
 
@@ -142,29 +145,55 @@ static void EventLoop()
             redraw = update_feedback & UMF_REDRAW;
             reset_select = update_feedback & UMF_RESET_SELECT;
             reset_append = update_feedback & UMF_RESET_AFTER_APPEND;
-
-            if (reset_select)
-            {
-                UpdateDisplayedEntries();
-            }
-
-            if (reset_append)
-            {
-                UpdateDisplayedEntriesAfterAppendingCharacter();
-            }
-
-            if (redraw)
-            {
-                RedrawWindow();
-                fprintf(stderr,
-                        "CURRENT_SELECT_OFFSET: %d\nCURRENT_SELECT_IDX: %d\n",
-                        current_select_offset, current_select_idx);
-            }
         }
 
         else if (e.type == Expose)
         {
             fprintf(stderr, "Exposed?\n");
+        }
+
+
+        // TODO: move redraw and others here and do it here!
+
+        // TODO: After each frame check if this is  a case.
+        if (menu_mode == MM_APP_LUNCHER)
+        {
+            // TODO: this is probobly horriebly wrong:
+            if (desktop_state.dirty)
+            {
+                // TODO: At least here we must lock the desktop_state!
+                fprintf(stderr, "NEED A RESET!!!!!\n");
+                MakeEntryArrayFromDesktopStateData();
+
+                desktop_state.dirty = 0;
+
+                pthread_create(&save_desktop_entries_thread, NULL,
+                               SaveDesktopEntriesThreadMain, NULL);
+
+                redraw = 1;
+                reset_select = 1;
+            }
+        }
+
+
+        if (reset_select)
+        {
+            UpdateDisplayedEntries();
+        }
+
+        if (reset_append)
+        {
+            UpdateDisplayedEntriesAfterAppendingCharacter();
+        }
+
+        if (redraw)
+        {
+            RedrawWindow();
+#if 0
+            fprintf(stderr,
+                    "CURRENT_SELECT_OFFSET: %d\nCURRENT_SELECT_IDX: %d\n",
+                    current_select_offset, current_select_idx);
+#endif
         }
     }
 }
@@ -233,6 +262,7 @@ int main(int argc, char **argv)
             menu_mode = MM_APP_LUNCHER;
 
         // Some graphical options:
+        // TODO: Assert in these there IS a next arg!
         else if (strcmp(argv[i], "--no-lines") == 0)
             draw_lines = 0;
         else if (strcmp(argv[i], "-nb") == 0 || strcmp(argv[i], "--nb") == 0)
@@ -255,6 +285,59 @@ int main(int argc, char **argv)
         {
             ++i;
             GetCurrentArgAsColorAndAssingIt(i, argc, &selected_font_color_data);
+        }
+
+        // Option to add aditional entires or blacklist some of the existing ones.
+        // TODO: Cannot blacklist manually added entries. Is it ok?
+        // TODO: Make sure in these there IS a next arg!
+        else if (strcmp(argv[i], "--appluncher-blacklist") == 0)
+        {
+            ++i;
+            if (blacklisted_entries_capacity == blacklisted_entries_number)
+            {
+                blacklisted_entries_capacity =
+                    MAX(blacklisted_entries_capacity, 4) * 2;
+                blacklisted_entries = realloc(blacklisted_entries,
+                                              blacklisted_entries_capacity);
+            }
+
+            assert(blacklisted_entries_capacity > blacklisted_entries_number);
+            // TODO: Duplicate string or not?
+            blacklisted_entries[blacklisted_entries_number++] = argv[i];
+        }
+        else if (strcmp(argv[i], "--appluncher-add") == 0)
+        {
+            ++i;
+            if (extra_entries_capacity == extra_entries_number)
+            {
+                extra_entries_capacity = MAX(extra_entries_capacity, 4) * 2;
+
+                extra_entries_names = realloc(extra_entries_names, extra_entries_capacity);
+                extra_entries_execs = realloc(extra_entries_execs, extra_entries_capacity);
+            }
+
+            assert(extra_entries_capacity > extra_entries_number);
+            // TODO: Decide if Duplicatestring is needed or we can just app a
+            // poitner to an arg.
+            extra_entries_names[extra_entries_number] = argv[i];
+            ++i;
+            // TODO: ^Same
+            extra_entries_execs[extra_entries_number] = argv[i];
+            extra_entries_number++;
+        }
+
+        // Set up prompt:
+        else if (strcmp(argv[i], "--prompt") == 0 || strcmp(argv[i], "-p") == 0)
+        {
+            // TODO: Assert in these there IS a next arg!
+            ++i;
+
+            int length = strlen(argv[i]);
+            assert(length < 255);
+            for (int j = 0; j < length; ++j)
+                prompt[j] = argv[i][j];
+            prompt[length] = '\0';
+            prompt_length = length;
         }
 
         else
@@ -280,6 +363,7 @@ int main(int argc, char **argv)
 
     XUngrabKeyboard(dpy, CurrentTime);
     HandeOutput(inserted_text);
+
 
     return 0;
 }

@@ -1,4 +1,5 @@
 #include <time.h>
+#include <pthread.h>
 
 #include "desktop_entry_parser.h"
 #include "string.h"
@@ -23,29 +24,79 @@ struct _EntriesBlock
 };
 typedef struct _EntriesBlock EntriesBlock;
 
-// TODO: Move to some menu state strucutre!
-// Used only when reading .desktop files.
-DesktopEntry *desktop_entries;
-int desktop_entries_size = 0;
+struct
+{
+    // These are used only when reading .desktop files.
+    DesktopEntry *desktop_entries;
+    int desktop_entries_size;
+
+    int dirty;
+} desktop_state;
+
+// The thread that will work in a background and check if desktop entries are
+// up-to-date.
+static pthread_t update_desktop_entries_thread;
+static pthread_t save_desktop_entries_thread;
+static pthread_mutex_t desktop_state_lock;
+
+static void *SaveDesktopEntriesThreadMain(void *args)
+{
+    if (args)
+    {
+    }
+
+    pthread_mutex_lock(&desktop_state_lock);
+
+    // NOTE: Testing. Make sure program exits properly when saving this file takes longer than it should.
+#if 0
+    sleep(5);
+#endif
+
+    int save_feedback = SaveDesktopEntriesInfoToCacheFile(
+        "/home/mateusz/mmcache",
+        desktop_state.desktop_entries,
+        desktop_state.desktop_entries_size);
+
+    // TODO: Don't assert, just handle this case!!!
+    assert(save_feedback);
+
+    pthread_mutex_unlock(&desktop_state_lock);
+    return NULL;
+}
+
+typedef enum
+{
+    UMF_NONE = 0,
+    UMF_REDRAW = 1,
+    UMF_RESET_SELECT = 2,
+    UMF_RESET_AFTER_APPEND = 4
+} UpdateMenuFeedback;
+
+// TODO(possibly): move all of them to one strucutre?
 
 // The first block which will be usually enought for all entries.
 // If there are dozens of them, next blocks will be allocated.
-EntriesBlock first_entries_block = {};
+static EntriesBlock first_entries_block = {};
 static EntriesBlock *last_block = &first_entries_block;
 
-Entry *first_displayed_entry;
+static Entry *first_displayed_entry;
 
 // A pointer to the selected entry, must be in a printed list!
-Entry *current_select;
+static Entry *current_select;
 
 // Which rect (from the top) is highlighted?
-int current_select_idx = 0;
+static int current_select_idx = 0;
 
 // How many rects (from the top) we must skip to see selected one?
-int current_select_offset = 0;
+static int current_select_offset = 0;
 
-char inserted_text[256];
-int inserted_text_idx;
+// TODO: Realloc inserted text!
+static char inserted_text[256];
+static int inserted_text_idx = 0;
+
+// TODO: Make prompt as long as the user wants it to be!
+static char prompt[256];
+static int prompt_length = 0;
 
 inline static int EntryMatch(Entry *entry, const char *text)
 {
@@ -57,17 +108,27 @@ inline static int EntryMatch(Entry *entry, const char *text)
         return 0;
 }
 
+// TODO: this neeeds testing!
 static void AddEntry(char *value, int length, EntriesBlock *last_entries_block)
 {
     if (last_entries_block->number_of_entries == NUMBER_OF_ENTRIES_IN_BLOCK)
     {
-        // We must allocate new new_entry block.
-        EntriesBlock *block = malloc(sizeof(EntriesBlock));
-        block->next = NULL;
-        block->number_of_entries = 0;
+        // TODO: Ugly. This is used when we reset the entires!
+        if (!last_entries_block->next)
+        {
+            last_entries_block = last_entries_block->next;
+            last_entries_block->number_of_entries = 0;
+        }
+        else
+        {
+            // We must allocate new new_entry block.
+            EntriesBlock *block = malloc(sizeof(EntriesBlock));
+            block->next = NULL;
+            block->number_of_entries = 0;
 
-        last_entries_block->next = block;
-        last_entries_block = block;
+            last_entries_block->next = block;
+            last_entries_block = block;
+        }
     }
 
     Entry *new_entry =
@@ -217,6 +278,55 @@ static void UpdateDisplayedEntriesAfterAppendingCharacter()
     current_select_offset = 0;
 }
 
+// TODO: This must be thread-safe!
+static void HandleAppLuncherOutput(const char *output)
+{
+    pthread_mutex_lock(&desktop_state_lock);
+    int found_in_entries_list = 0;
+
+    // Iterate over desktop entries and find the matching one.
+    for (int i = 0; i < desktop_state.desktop_entries_size; ++i)
+        if (strcmp(output, StringGetText(&desktop_state.desktop_entries[i].name)) ==
+            0)
+        {
+            found_in_entries_list = 1;
+
+            // TODO: Calculate the length properly.
+            char buffer[strlen(StringGetText(&desktop_state.desktop_entries[i].exec)) +
+                        strlen(" i3-msg exec ''")];
+            buffer[0] = '\0';
+
+            // TODO: Add ability to specify command by the user (use % to
+            // replace a command to call or something).
+            strcat(strcat(strcat(buffer, "i3-msg exec '"),
+                          StringGetText(&desktop_state.desktop_entries[i].exec)), "'");
+
+            fprintf(stderr, "Buffer: %s\n", buffer);
+            system(buffer);
+
+            break;
+        }
+
+    if (!found_in_entries_list)
+    {
+        // If nothing was found, FOR NOW we just try to exec it. TODO: Clean
+        // up this super-bad code! this doenst have to be here TBH...
+        size_t inserted_text_len = strlen(inserted_text);
+        if (inserted_text_len)
+        {
+            // TODO: This has probobly some bugs.
+            char buffer[inserted_text_len + 3 + strlen("i3-msg  ' '")];
+            buffer[0] = '\0';
+            strcat(strcat(strcat(buffer, "i3-msg '"), inserted_text), "'");
+
+            fprintf(stderr, "Executing command not from the list: %s\n", buffer);
+            system(buffer);
+        }
+    }
+
+    pthread_mutex_unlock(&desktop_state_lock);
+}
+
 static void HandeOutput(const char *output)
 {
     if (output[0] == '\0')
@@ -229,44 +339,8 @@ static void HandeOutput(const char *output)
             break;
 
         case MM_APP_LUNCHER:
-        {
-            // Iterate over desktop entries and find the matching one.
-            for (int i = 0; i < desktop_entries_size; ++i)
-                if (strcmp(output, StringGetText(&desktop_entries[i].name)) ==
-                    0)
-                {
-                    // printf(StringGetText(&desktop_entries[i].exec));
-                    // TODO: Calculate the length properly.
-                    char
-                        buffer[strlen(StringGetText(&desktop_entries[i].exec)) +
-                               strlen(" i3-msg exec ''")];
-                    buffer[0] = '\0';
-
-                    // TODO: Add ability to specify command by the user (use %
-                    // to replace a command to call).
-                    strcat(strcat(strcat(buffer, "i3-msg exec '"),
-                                  StringGetText(&desktop_entries[i].exec)),
-                           "'");
-
-                    fprintf(stderr, "Buffer: %s\n", buffer);
-                    system(buffer);
-                    return;
-                }
-
-            // If nothing was found, FOR NOW we just try to exec it.
-            // TODO: Clean up this super-bad code! this doenst have to be here
-            // TBH...
-            size_t inserted_text_len = strlen(inserted_text);
-            if (inserted_text_len)
-            {
-                char buffer[inserted_text_len + 3 + strlen("i3-msg ")];
-                buffer[0] = '\0';
-                strcat(strcat(buffer, "i3-msg "), inserted_text);
-
-                system(buffer);
-            }
-        }
-        break;
+            HandleAppLuncherOutput(output);
+            break;
 
         default:
             assert(!"Not supported menu type!\n");
@@ -285,8 +359,6 @@ static void LoadEntriesFromStdin()
 
     while ((nread = getline(&line, &len, stdin)) != -1)
     {
-        fprintf(stderr, "Retrieved line of length %du:\n", nread);
-
         // Remove the newline, and calculate the size
         int text_len = 0;
         for (int i = 0; line[i] != '\0'; ++i)
@@ -318,18 +390,21 @@ LoadDotDesktopEntriesFromCacheFile(const char *path,
     if (file)
     {
         char title[5];
-        assert(fread(title, sizeof(char) * 4, 1, file));
+        int fread_feedback = fread(title, sizeof(char) * 4, 1, file);
+        assert(fread_feedback);
         title[4] = '\0';
         if (strcmp(title, "MMCF") != 0)
             assert("Bad header!");
 
-        int ver;
-        assert(fread(&ver, sizeof(int), 1, file));
         // TODO: version stuff.
+        int ver = 0;
+        fread_feedback = fread(&ver, sizeof(int), 1, file);
+        assert(fread_feedback);
         assert(ver == 0);
 
         int number_of_entries;
-        assert(fread(&number_of_entries, sizeof(int), 1, file));
+        fread_feedback = fread(&number_of_entries, sizeof(int), 1, file);
+        assert(fread_feedback);
         (*result_desktop_entries) =
             malloc(sizeof(DesktopEntry) * number_of_entries);
 
@@ -341,17 +416,20 @@ LoadDotDesktopEntriesFromCacheFile(const char *path,
             // TODO: collapse!
             {
                 char buffer[len + 2];
-                assert(fread(buffer, sizeof(char) * len, 1, file));
+                fread_feedback = fread(buffer, sizeof(char) * len, 1, file);
+                assert(fread_feedback);
                 buffer[len] = '\0';
 
                 (*result_desktop_entries)[current_entry_idx].name =
                     MakeStringCopyText(buffer, len);
             }
-            assert(fread(&len, sizeof(size_t), 1, file));
+            fread_feedback = fread(&len, sizeof(size_t), 1, file);
+            assert(fread_feedback);
 
             {
                 char buffer[len + 2];
-                assert(fread(buffer, sizeof(char) * len, 1, file));
+                fread_feedback = fread(buffer, sizeof(char) * len, 1, file);
+                assert(fread_feedback);
                 buffer[len] = '\0';
 
                 (*result_desktop_entries)[current_entry_idx].exec =
@@ -375,11 +453,7 @@ LoadDotDesktopEntriesFromCacheFile(const char *path,
     return 1;
 }
 
-#include <pthread.h>
-// The thread that will work in a background and check if desktop entries are
-// up-to-date.
-static pthread_t updateDesktopEntriesThread;
-
+// TODO: rename becasue this name is missleading.
 void *CheckIfEntriesAreUpToDate(void *args)
 {
     // NOTE: Silience the warrning about unused argument.
@@ -388,21 +462,77 @@ void *CheckIfEntriesAreUpToDate(void *args)
     }
 
     DesktopEntry *result_desktop_entries;
-    int result_desktop_entries_size;
+    int result_desktop_entries_size = 0;
 
+#ifdef DEBUG
     PQUERY_START_TIMER("");
-    // TODO: dont assert, just handle this case!
-    assert(LoadEntriesFromDotDesktop("/usr/share/applications/",
-                                     &result_desktop_entries,
-                                     &result_desktop_entries_size));
-
-#if 0
-    SaveDesktopEntriesInfoToCacheFile("/home/mateusz/mmcache",
-                                      result_desktop_entries,
-                                      result_desktop_entries_size);
 #endif
-    PQUERY_STOP_TIMER("Total load time:");
+
+    // TODO: dont assert, just handle this case!
+    int entries_loaded_from_dot_desktop =
+        LoadEntriesFromDotDesktop("/usr/share/applications/",
+                                  &result_desktop_entries,
+                                  &result_desktop_entries_size);
+
+    assert(entries_loaded_from_dot_desktop);
+
+#ifdef DEBUG
+    PQUERY_STOP_TIMER("Total load time of reading from dot desktop:");
+#endif
+
+    pthread_mutex_lock(&desktop_state_lock);
+
+    int arrays_differ = 0;
+
+    if (result_desktop_entries_size != desktop_state.desktop_entries_size)
+        arrays_differ = 1;
+    else
+        for (int i = 0; i < result_desktop_entries_size; ++i)
+            if (StringCompare(&result_desktop_entries[i].name,
+                              &desktop_state.desktop_entries[i].name) != 0
+                || StringCompare(&result_desktop_entries[i].exec,
+                                 &desktop_state.desktop_entries[i].exec) != 0)
+            {
+                arrays_differ = 1;
+                break;
+            }
+
+    // TODO: result_desktop_entries leaks, but nobody cares.
+    if (arrays_differ)
+    {
+        fprintf(stderr, "Displayed stuff differs with the current one. Updating...\n");
+        desktop_state.desktop_entries = result_desktop_entries;
+        desktop_state.desktop_entries_size = result_desktop_entries_size;
+        desktop_state.dirty = 1;
+
+        // .
+    }
+
+    pthread_mutex_unlock(&desktop_state_lock);
+
+    // TODO: Check if loaded entries table differs with the one that has been
+    // read from cache and if it is: chagne displayed one to this one and save
+    // this one to cache file!!!!
+
     return NULL;
+}
+
+// TODO: This must be done by the main thread!!!!!!
+// Or everything must be locked!
+static void MakeEntryArrayFromDesktopStateData()
+{
+    // NOTE: Reset entry blocks!
+    last_block = &first_entries_block;
+    last_block->number_of_entries = 0;
+
+    // Add created list to the display list.
+    for (int i = 0; i < desktop_state.desktop_entries_size; ++i)
+    {
+        AddEntry(
+            StringGetText(&(desktop_state.desktop_entries[i].name)),
+            strlen(StringGetText(&(desktop_state.desktop_entries[i].name))),
+            last_block);
+    }
 }
 
 static void MenuInit()
@@ -416,22 +546,56 @@ static void MenuInit()
 
         case MM_APP_LUNCHER:
         {
-            DesktopEntry *result_desktop_entries = NULL;
-            int result_desktop_entries_size = 0;
+            // TODO: This code is not thread save, make sure it is, when we add
+            // more guys touching destkop_state!
+
+            desktop_state.desktop_entries_size = 0;
+            desktop_state.desktop_entries = NULL;
 
             // We load some entries from the cache file, and then check if
             // cached data is up to date with the original desktop file foleder.
 
-            // TODO: or check if cache file exists, and if it doesnt just do
-            // something else.
+            int data_was_loaded_from_cache = 0;
+
+#ifdef DEBUG
+            PQUERY_START_TIMER("");
+#endif
             if (LoadDotDesktopEntriesFromCacheFile(
-                    "/home/mateusz/mmcache", &result_desktop_entries,
-                    &result_desktop_entries_size))
+                    "/home/mateusz/mmcache",
+                    &desktop_state.desktop_entries,
+                    &desktop_state.desktop_entries_size))
+            {
+#ifdef DEBUG
+                PQUERY_STOP_TIMER("Files read from cache in:");
+#endif
+
+                data_was_loaded_from_cache = 1;
+            }
+            else
+            {
+                data_was_loaded_from_cache = 0;
+                fprintf(stderr, "No cache file, loading from dot desktop.\n");
+
+                // TODO: dont assert, just handle this case!
+                // TODO: Does it have to be "/usr/share/applications/"?
+                int entries_loaded_from_dot_desktop =
+                    LoadEntriesFromDotDesktop("/usr/share/applications/",
+                                              &desktop_state.desktop_entries,
+                                              &desktop_state.desktop_entries_size);
+
+                assert(entries_loaded_from_dot_desktop);
+            }
+
+            MakeEntryArrayFromDesktopStateData();
+            desktop_state.desktop_entries = desktop_state.desktop_entries;
+            desktop_state.desktop_entries_size = desktop_state.desktop_entries_size;
+
+            if (data_was_loaded_from_cache)
             {
                 // Create a second thread which updates the data, checks if
                 // there are some differences and if so swaps datas, and save
                 // new one to the cache file.
-                if (pthread_create(&updateDesktopEntriesThread, NULL,
+                if (pthread_create(&update_desktop_entries_thread, NULL,
                                    CheckIfEntriesAreUpToDate, NULL))
                 {
                     fprintf(stderr, "Error creating thread\n");
@@ -439,30 +603,16 @@ static void MenuInit()
             }
             else
             {
-                // TODO: dont assert, just handle this case!
-                // TODO: Does it have to be "/usr/share/applications/"?
-                assert(LoadEntriesFromDotDesktop("/usr/share/applications/",
-                                                 &result_desktop_entries,
-                                                 &result_desktop_entries_size));
-
                 // TODO: Add ability for the user, not to create cache file,
                 // also add ability to specify the path to it!
-                SaveDesktopEntriesInfoToCacheFile("/home/mateusz/mmcache",
-                                                  result_desktop_entries,
-                                                  result_desktop_entries_size);
-            }
+                int desktop_entries_saved_into_cache_file =
+                    SaveDesktopEntriesInfoToCacheFile(
+                        "/home/mateusz/mmcache",
+                        desktop_state.desktop_entries,
+                        desktop_state.desktop_entries_size);
 
-            // Add created list to the display list.
-            for (int i = 0; i < result_desktop_entries_size; ++i)
-            {
-                AddEntry(
-                    StringGetText(&(result_desktop_entries[i].name)),
-                    strlen(StringGetText(&(result_desktop_entries[i].name))),
-                    last_block);
+                assert(desktop_entries_saved_into_cache_file);
             }
-
-            desktop_entries = result_desktop_entries;
-            desktop_entries_size = result_desktop_entries_size;
         }
         break;
 
@@ -470,16 +620,6 @@ static void MenuInit()
             assert(!"Not supported menu type!\n");
     }
 }
-
-// TODO: Specify how much? (more that one line which is current limitation)!
-
-typedef enum
-{
-    UMF_NONE = 0,
-    UMF_REDRAW = 1,
-    UMF_RESET_SELECT = 2,
-    UMF_RESET_AFTER_APPEND = 4
-} UpdateMenuFeedback;
 
 static UpdateMenuFeedback MenuCompleteAtCurrent()
 {

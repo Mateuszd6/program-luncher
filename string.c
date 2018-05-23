@@ -14,6 +14,14 @@ static inline String StringMakeEmpty()
     return result;
 }
 
+static inline int StringCompare(String *self, String *other)
+{
+    const char *_self = StringGetText(self);
+    const char *_other = StringGetText(other);
+
+    return strcmp(_self, _other);
+}
+
 static inline String MakeStringCopyText(const char *text, int text_len)
 {
     String result;

@@ -21,4 +21,6 @@ static inline String MakeStringCopyText(const char *text, int text_len);
 
 static inline int StringIsEmpty(const String *str);
 
+static inline int StringCompare(String *self, String *other);
+
 #endif // __STRING_H__
