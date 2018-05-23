@@ -109,15 +109,18 @@ inline static int EntryMatch(Entry *entry, const char *text)
 }
 
 // TODO: this neeeds testing!
-static void AddEntry(char *value, int length, EntriesBlock *last_entries_block)
+static void AddEntry(char *value, int length)
 {
-    if (last_entries_block->number_of_entries == NUMBER_OF_ENTRIES_IN_BLOCK)
+    if (last_block->number_of_entries == NUMBER_OF_ENTRIES_IN_BLOCK)
     {
-        // TODO: Ugly. This is used when we reset the entires!
-        if (!last_entries_block->next)
+        // If the next node is allocated, we just go there. This will happen
+        // after reset of the entries (E.g. when we decide the data displayed
+        // based on the cache file is out of date and want to change that).
+        if (last_block->next)
         {
-            last_entries_block = last_entries_block->next;
-            last_entries_block->number_of_entries = 0;
+            last_block = last_block->next;
+            last_block->number_of_entries = 0;
+            last_block->next = NULL;
         }
         else
         {
@@ -126,13 +129,13 @@ static void AddEntry(char *value, int length, EntriesBlock *last_entries_block)
             block->next = NULL;
             block->number_of_entries = 0;
 
-            last_entries_block->next = block;
-            last_entries_block = block;
+            last_block->next = block;
+            last_block = block;
         }
     }
 
     Entry *new_entry =
-        &(last_entries_block->entries[last_entries_block->number_of_entries++]);
+        &(last_block->entries[last_block->number_of_entries++]);
 
     new_entry->text = MakeStringCopyText(value, length);
     new_entry->next_displayed = NULL;
@@ -215,6 +218,7 @@ static void UpdateDisplayedEntries()
                                 &prev_entry, &first_with_not_full_match,
                                 &last_with_not_full_match);
         }
+
         current_block = current_block->next;
     } while (current_block);
 
@@ -369,7 +373,7 @@ static void LoadEntriesFromStdin()
                 break;
             }
 
-        AddEntry(line, text_len, last_block);
+        AddEntry(line, text_len);
     }
 
     free(line);
@@ -528,10 +532,8 @@ static void MakeEntryArrayFromDesktopStateData()
     // Add created list to the display list.
     for (int i = 0; i < desktop_state.desktop_entries_size; ++i)
     {
-        AddEntry(
-            StringGetText(&(desktop_state.desktop_entries[i].name)),
-            strlen(StringGetText(&(desktop_state.desktop_entries[i].name))),
-            last_block);
+        AddEntry(StringGetText(&(desktop_state.desktop_entries[i].name)),
+                 strlen(StringGetText(&(desktop_state.desktop_entries[i].name))));
     }
 }
 

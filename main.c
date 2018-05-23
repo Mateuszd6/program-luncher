@@ -162,7 +162,6 @@ static void EventLoop()
             if (desktop_state.dirty)
             {
                 // TODO: At least here we must lock the desktop_state!
-                fprintf(stderr, "NEED A RESET!!!!!\n");
                 MakeEntryArrayFromDesktopStateData();
 
                 desktop_state.dirty = 0;
