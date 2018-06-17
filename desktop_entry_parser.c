@@ -150,8 +150,9 @@ static int LoadEntriesFromDotDesktop(const char *path,
                     if (!header_checked)
                     {
                         // TODO: Handle this case better!
-                        assert(strcmp(line, "[Desktop Entry]\n") == 0);
-                        header_checked = 1;
+                        if (strcmp(line, "[Desktop Entry]\n") == 0)
+                            header_checked = 1;
+
                         continue;
                     }
 

@@ -39,6 +39,8 @@ static pthread_t update_desktop_entries_thread;
 static pthread_t save_desktop_entries_thread;
 static pthread_mutex_t desktop_state_lock;
 
+static const char *cacheFilePath = "/home/mateusz/.cache/mmcache";
+
 static void *SaveDesktopEntriesThreadMain(void *args)
 {
     if (args)
@@ -53,7 +55,7 @@ static void *SaveDesktopEntriesThreadMain(void *args)
 #endif
 
     int save_feedback = SaveDesktopEntriesInfoToCacheFile(
-        "/home/mateusz/mmcache",
+        cacheFilePath,
         desktop_state.desktop_entries,
         desktop_state.desktop_entries_size);
 
@@ -339,6 +341,7 @@ static void HandeOutput(const char *output)
     switch (menu_mode)
     {
         case MM_DMENU:
+        case MM_ONELINE:
             printf("%s\n", output);
             break;
 
@@ -468,10 +471,6 @@ void *CheckIfEntriesAreUpToDate(void *args)
     DesktopEntry *result_desktop_entries;
     int result_desktop_entries_size = 0;
 
-#ifdef DEBUG
-    PQUERY_START_TIMER("");
-#endif
-
     // TODO: dont assert, just handle this case!
     int entries_loaded_from_dot_desktop =
         LoadEntriesFromDotDesktop("/usr/share/applications/",
@@ -479,10 +478,6 @@ void *CheckIfEntriesAreUpToDate(void *args)
                                   &result_desktop_entries_size);
 
     assert(entries_loaded_from_dot_desktop);
-
-#ifdef DEBUG
-    PQUERY_STOP_TIMER("Total load time of reading from dot desktop:");
-#endif
 
     pthread_mutex_lock(&desktop_state_lock);
 
@@ -509,14 +504,14 @@ void *CheckIfEntriesAreUpToDate(void *args)
         desktop_state.desktop_entries_size = result_desktop_entries_size;
         desktop_state.dirty = 1;
 
-        // .
+        // ???
     }
-
-    pthread_mutex_unlock(&desktop_state_lock);
 
     // TODO: Check if loaded entries table differs with the one that has been
     // read from cache and if it is: chagne displayed one to this one and save
     // this one to cache file!!!!
+
+    pthread_mutex_unlock(&desktop_state_lock);
 
     return NULL;
 }
@@ -546,6 +541,9 @@ static void MenuInit()
             LoadEntriesFromStdin();
         } break;
 
+        case MM_ONELINE:
+            break;
+
         case MM_APP_LUNCHER:
         {
             // TODO: This code is not thread save, make sure it is, when we add
@@ -559,18 +557,11 @@ static void MenuInit()
 
             int data_was_loaded_from_cache = 0;
 
-#ifdef DEBUG
-            PQUERY_START_TIMER("");
-#endif
             if (LoadDotDesktopEntriesFromCacheFile(
-                    "/home/mateusz/mmcache",
+                    cacheFilePath,
                     &desktop_state.desktop_entries,
                     &desktop_state.desktop_entries_size))
             {
-#ifdef DEBUG
-                PQUERY_STOP_TIMER("Files read from cache in:");
-#endif
-
                 data_was_loaded_from_cache = 1;
             }
             else
@@ -609,7 +600,7 @@ static void MenuInit()
                 // also add ability to specify the path to it!
                 int desktop_entries_saved_into_cache_file =
                     SaveDesktopEntriesInfoToCacheFile(
-                        "/home/mateusz/mmcache",
+                        cacheFilePath,
                         desktop_state.desktop_entries,
                         desktop_state.desktop_entries_size);
 

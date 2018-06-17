@@ -26,7 +26,8 @@ static int case_sensitive = 0;
 typedef enum
 {
     MM_DMENU = 0,
-    MM_APP_LUNCHER = 1
+    MM_APP_LUNCHER = 1,
+    MM_ONELINE = 2
 } MenuMode;
 
 // This is the default mode.
@@ -257,7 +258,7 @@ int main(int argc, char **argv)
         // Select the mode for the menu:
         if (strcmp(argv[i], "--dmenu") == 0)
             menu_mode = MM_DMENU;
-        else if (strcmp(argv[i], "--app-luncher") == 0)
+        else if (strcmp(argv[i], "--appluncher") == 0)
             menu_mode = MM_APP_LUNCHER;
 
         // Some graphical options:
@@ -289,6 +290,7 @@ int main(int argc, char **argv)
         // Option to add aditional entires or blacklist some of the existing ones.
         // TODO: Cannot blacklist manually added entries. Is it ok?
         // TODO: Make sure in these there IS a next arg!
+        // TODO: Inform user if the menu is not in a appluncher mode
         else if (strcmp(argv[i], "--appluncher-blacklist") == 0)
         {
             ++i;
