@@ -1,4 +1,5 @@
-# Fast aplication luncher for linux.
+# Old version of my program luncher for x11 desktop.
+
+Written in pure C on top of Xlib.
 
 
-Currently it is not a luncher 'for linux' but rather for i3 only (because of i3-sensible-terminal call) but I still work on it... From time to time.
